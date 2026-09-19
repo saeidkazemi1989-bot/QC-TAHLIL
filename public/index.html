@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>سامانه گزارشات کیفیت</title>
+  <meta name="description" content="داشبورد تحلیلی کیفیت تولید: عیوب حین تولید، اسناد بازرسی، تولید و شاخص PPM" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232f6fb3'/><text x='50' y='66' font-size='52' text-anchor='middle' fill='white' font-family='Tahoma'>QC</text></svg>" />
+  <link rel="stylesheet" href="./css/app.css" />
+  <style>
+    .boot-error { max-width: 720px; margin: 60px auto; background: #fff; border: 1px solid #dbe3ed;
+      border-radius: 16px; padding: 26px 30px; box-shadow: 0 8px 24px rgba(16,32,56,.08); line-height: 2; }
+    .boot-error h2 { color: #c0504d; margin-bottom: 10px; }
+    .boot-error code { background: #eef2f7; padding: 2px 8px; border-radius: 6px; direction: ltr; display: inline-block; }
+    .boot-error ol { padding-inline-start: 22px; }
+    .boot-error .box { background: #f6f9fd; border: 1px solid #dbe3ed; border-radius: 10px; padding: 12px 16px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="boot">در حال بارگذاری سامانه…</div>
+  </div>
+
+  <script src="./vendor/echarts.min.js"></script>
+  <script type="module" src="./js/app.js"></script>
+
+  <script>
+    /* اگر فایل را مستقیماً (file://) باز کرده باشیم، مرورگر اجازه اجرای ماژول‌ها
+       و ارتباط با پایگاه داده را نمی‌دهد؛ پس به‌جای ماندن روی «در حال بارگذاری»،
+       راهنمای اجرا نمایش داده می‌شود. */
+    (function () {
+      var app = document.getElementById('app');
+      function showHelp(title, extra) {
+        app.innerHTML =
+          '<div class="boot-error">' +
+          '<h2>' + title + '</h2>' +
+          '<p>این برنامه یک سرور کوچک دارد که داده‌ها را از پایگاه داده می‌خواند، ' +
+          'بنابراین با دبل‌کلیک روی فایل <code>index.html</code> اجرا نمی‌شود.</p>' +
+          '<div class="box"><b>روش اجرا در ویندوز:</b><ol>' +
+          '<li>اگر Node.js نصب ندارید، آن را از <span style="direction:ltr">nodejs.org</span> نصب کنید (نسخه LTS).</li>' +
+          '<li>پوشه پروژه را از حالت زیپ خارج کنید (Extract) و وارد آن شوید.</li>' +
+          '<li>روی فایل <code>start.bat</code> دبل‌کلیک کنید.</li>' +
+          '<li>صبر کنید تا مرورگر با آدرس <span style="direction:ltr">http://localhost:3000</span> باز شود.</li>' +
+          '</ol>' +
+          '<p>یا در خط فرمان داخل پوشه پروژه: <code>npm install</code> و سپس <code>npm start</code></p></div>' +
+          (extra || '') +
+          '</div>';
+      }
+      if (location.protocol === 'file:') {
+        showHelp('برنامه را باید از طریق سرور اجرا کنید');
+        return;
+      }
+      // اگر بعد از ۱۲ ثانیه هنوز بالا نیامد (مثلاً سرور خاموش است)، پیام راهنما بده
+      setTimeout(function () {
+        if (document.querySelector('.boot')) {
+          showHelp('ارتباط با سرور برقرار نشد',
+            '<p>احتمالاً سرور اجرا نشده است. در پوشه پروژه دستور <code>npm start</code> را بزنید ' +
+            '(یا <code>start.bat</code> را اجرا کنید) و دوباره آدرس ' +
+            '<span style="direction:ltr">http://localhost:3000</span> را باز کنید.</p>');
+        }
+      }, 12000);
+    })();
+  </script>
+</body>
+</html>

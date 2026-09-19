@@ -1,0 +1,36 @@
+{
+  "name": "qc-tahlil",
+  "version": "1.0.0",
+  "description": "سامانه گزارشات کیفیت — داشبورد تحلیلی عیوب تولید، بازرسی و تولید",
+  "main": "server/index.mjs",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "import": "node server/etl.mjs",
+    "reset": "rm -f data/qc.db* && node server/etl.mjs",
+    "test": "node server/selftest.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saeidkazemi1989-bot/QC-TAHLIL.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/saeidkazemi1989-bot/QC-TAHLIL/issues"
+  },
+  "homepage": "https://github.com/saeidkazemi1989-bot/QC-TAHLIL#readme",
+  "dependencies": {
+    "echarts": "^6.1.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "multer": "^2.4.0"
+  },
+  "type": "module",
+  "optionalDependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
