@@ -167,6 +167,28 @@ function buildFilterBar() {
   if (!bar) return;
   const source = state.source || 'inprocess';
 
+  // در نسخه تک‌فایل داده‌ها از پیش محاسبه شده‌اند؛ فقط انتخاب منبع در دسترس است
+  if (window.__STATIC__) {
+    bar.innerHTML = `
+      <div class="filter-row">
+        <div class="seg" id="src-seg">
+          <button data-src="inprocess" class="${source === 'inprocess' ? 'active' : ''}">عیوب حین تولید</button>
+          <button data-src="inspection" class="${source === 'inspection' ? 'active' : ''}">اسناد بازرسی</button>
+        </div>
+        <span class="hint">نسخه تک‌فایل: داده‌ها برای کل بازه محاسبه شده‌اند و فیلتر تاریخ/محصول در آن غیرفعال است.
+        برای فیلترگذاری کامل، <b>start.bat</b> را اجرا کنید.</span>
+      </div>`;
+    bar.querySelectorAll('#src-seg button').forEach((b) => {
+      b.addEventListener('click', () => {
+        state.source = b.dataset.src;
+        state.filters = { source: b.dataset.src };
+        buildFilterBar();
+        route(true);
+      });
+    });
+    return;
+  }
+
   bar.innerHTML = `
     <div class="filter-row">
       <div class="seg" id="src-seg">
@@ -385,4 +407,9 @@ window.addEventListener('resize', () => {
   document.querySelectorAll('.chart').forEach((c) => c.__chart?.resize());
 });
 
-start();
+/** نقطه ورود برنامه (نسخه سروری و نسخه تک‌فایل هر دو از این استفاده می‌کنند) */
+export function startApp() {
+  return start();
+}
+
+if (!window.__STATIC__) startApp();

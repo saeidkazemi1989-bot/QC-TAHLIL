@@ -378,6 +378,8 @@ export const pfmea = {
   subtitle: 'اولویت‌بندی ریسک بر اساس RPN = شدت × وقوع × تشخیص',
   roles: ['admin', 'expert'],
   async render(root) {
+    state.source = 'inprocess';            // تحلیل PFMEA فقط روی داده‌های حین تولید معنا دارد
+    state.filters.source = 'inprocess';
     root.innerHTML = loadingCard();
     const [s, rows] = await Promise.all([
       get('/api/summary'),

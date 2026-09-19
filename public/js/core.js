@@ -1,6 +1,26 @@
 /* ابزارهای مشترک رابط کاربری: اعداد فارسی، تاریخ، فراخوانی API، وضعیت */
 const PERSIAN_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 
+/**
+ * ذخیره‌ساز امن: در برخی مرورگرها (مثلاً باز کردن فایل از روی دیسک یا حالت خصوصی)
+ * دسترسی به localStorage خطا می‌دهد؛ در این صورت از حافظه موقت استفاده می‌شود.
+ */
+const safeStorage = (() => {
+  try {
+    const t = '__qc_test__';
+    window.localStorage.setItem(t, '1');
+    window.localStorage.removeItem(t);
+    return window.localStorage;
+  } catch {
+    const mem = new Map();
+    return {
+      getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => mem.set(k, String(v)),
+      removeItem: (k) => mem.delete(k)
+    };
+  }
+})();
+
 export function faNum(input) {
   if (input === null || input === undefined || input === '') return '—';
   return String(input).replace(/[0-9]/g, (d) => PERSIAN_DIGITS[Number(d)]);
@@ -38,8 +58,8 @@ export function compact(n) {
 }
 
 export const state = {
-  token: localStorage.getItem('qc_token') || null,
-  user: JSON.parse(localStorage.getItem('qc_user') || 'null'),
+  token: safeStorage.getItem('qc_token') || null,
+  user: JSON.parse(safeStorage.getItem('qc_user') || 'null'),
   meta: null,
   filters: {},
   source: 'inprocess'
@@ -48,15 +68,15 @@ export const state = {
 export function saveSession(token, user) {
   state.token = token;
   state.user = user;
-  localStorage.setItem('qc_token', token);
-  localStorage.setItem('qc_user', JSON.stringify(user));
+  safeStorage.setItem('qc_token', token);
+  safeStorage.setItem('qc_user', JSON.stringify(user));
 }
 
 export function logout() {
   state.token = null;
   state.user = null;
-  localStorage.removeItem('qc_token');
-  localStorage.removeItem('qc_user');
+  safeStorage.removeItem('qc_token');
+  safeStorage.removeItem('qc_user');
   location.hash = '#/login';
   location.reload();
 }
