@@ -43,6 +43,62 @@ async function get(path, extra = {}) {
   return api(path + filterQuery(extra));
 }
 
+/* ---------------------------------------------------- دریل‌داون (تفکیک روزانه) */
+/** اعمال بازهٔ تاریخ و رفتن به حالت روزانه (کلیک روی ماه/هفته در نمودار روند) */
+export function drillRange(page, root, from, to) {
+  if (!from && !to) return;
+  state.filters.from = from || null;
+  state.filters.to = to || null;
+  state.trendGroup = 'day';
+  document.dispatchEvent(new CustomEvent('qc:filters-changed'));
+  rerender(page, root);
+}
+
+/** بازگشت به کل بازه (حذف محدودیت تاریخِ دریل) */
+export function clearDrill(page, root) {
+  state.filters.from = null;
+  state.filters.to = null;
+  state.trendGroup = 'month';
+  document.dispatchEvent(new CustomEvent('qc:filters-changed'));
+  rerender(page, root);
+}
+
+/** نوارِ بازهٔ انتخاب‌شده با دکمهٔ بازگشت */
+function drillBanner(page, root) {
+  const from = state.filters.from;
+  const to = state.filters.to;
+  if (!from && !to) return '';
+  const id = `drill-back-${Math.random().toString(36).slice(2, 8)}`;
+  setTimeout(() => {
+    const b = document.getElementById(id);
+    if (b) b.addEventListener('click', () => clearDrill(page, root));
+  }, 0);
+  return `<div class="drill-banner">
+    <span>بازهٔ انتخاب‌شده: <b>${escapeHtml(from || 'ابتدا')}</b> تا <b>${escapeHtml(to || 'انت‌ها')}</b>
+    — نمودارها و جدول‌ها برای همین بازه، به تفکیک روز هستند.</span>
+    <button id="${id}">بازگشت به کل بازه</button>
+  </div>`;
+}
+
+/** کلیک روی نمودار روند: ماه/هفته/فصل → روزانه؛ و در حالت روزانه → صفحهٔ تحلیل گام‌به‌گام */
+function trendDrill(page, root) {
+  return (row) => {
+    if (!row) return;
+    const from = row.from_date || row.key;
+    const to = row.to_date || row.key;
+    if (state.trendGroup === 'day' || (from && from === to)) {
+      state.filters.from = from;
+      state.filters.to = to;
+      state.trendGroup = 'day';
+      state.drill = { date: from, product: null, defect: null };
+      document.dispatchEvent(new CustomEvent('qc:filters-changed'));
+      location.hash = '#/drill';
+      return;
+    }
+    drillRange(page, root, from, to);
+  };
+}
+
 /* ============================================================ نمای کلی */
 export const home = {
   id: 'home',
@@ -127,7 +183,7 @@ export const home = {
     `;
 
     wireSeg(root, 'home-period', (g) => { state.trendGroup = g; rerender(home, root); });
-    trendCombo(root.querySelector('#home-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0 });
+    trendCombo(root.querySelector('#home-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0, onClick: trendDrill(home, root) });
     if (defectBd.length) pareto(root.querySelector('#home-pareto'), defectBd, { valueName: defectWord() });
     else root.querySelector('#home-pareto').innerHTML = emptyCard();
     if (stationBd.length) barH(root.querySelector('#home-station'), stationBd, { valueName: defectWord() });
@@ -237,7 +293,7 @@ export const management = {
     `;
 
     wireSeg(root, 'mg-period', (g) => { state.trendGroup = g; rerender(management, root); });
-    trendCombo(root.querySelector('#mg-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0 });
+    trendCombo(root.querySelector('#mg-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0, onClick: trendDrill(management, root) });
     if (branchBd.length) barH(root.querySelector('#mg-branch'), branchBd, { valueName: defectWord() });
     if (defectBd.length) donut(root.querySelector('#mg-defectgroup'), defectBd, { valueName: defectWord() });
     if (deltaRows.length) deltaBars(root.querySelector('#mg-delta'), deltaRows);
@@ -376,7 +432,7 @@ export const inprocess = {
     `;
 
     wireSeg(root, 'ip-period', (g) => { state.trendGroup = g; rerender(inprocess, root); });
-    if (tr.length) trendCombo(root.querySelector('#ip-trend'), tr, { defectLabel: 'تعداد عیوب' });
+    if (tr.length) trendCombo(root.querySelector('#ip-trend'), tr, { defectLabel: 'تعداد عیوب', onClick: trendDrill(inprocess, root) });
     else root.querySelector('#ip-trend').innerHTML = emptyCard();
     pareto(root.querySelector('#ip-pareto'), defectBd, { limit: 15 });
     barH(root.querySelector('#ip-station'), stationBd);
@@ -463,7 +519,7 @@ export const inspection = {
     `;
 
     wireSeg(root, 'ins-period', (g) => { state.trendGroup = g; rerender(inspection, root); });
-    if (tr.length) trendCombo(root.querySelector('#ins-trend'), tr, { defectLabel: 'تعداد واحد معیوب' });
+    if (tr.length) trendCombo(root.querySelector('#ins-trend'), tr, { defectLabel: 'تعداد واحد معیوب', onClick: trendDrill(inspection, root) });
     else root.querySelector('#ins-trend').innerHTML = emptyCard();
     pareto(root.querySelector('#ins-pareto'), defectBd, { limit: 15, valueName: 'تعداد واحد معیوب' });
     barH(root.querySelector('#ins-station'), stationBd, { valueName: 'تعداد واحد معیوب' });
@@ -583,7 +639,9 @@ export const production = {
   group: 'month',
   async render(root) {
     root.innerHTML = loadingCard();
-    const group = production.group || 'month';
+    // اگر از صفحهٔ دیگری روی یک ماه/هفته دریل شده باشد، همان تفکیک اینجا هم رعایت می‌شود
+    const group = ['day', 'week', 'month'].includes(state.trendGroup)
+      ? state.trendGroup : (production.group || 'month');
     const [s, tr, wcs, domains, branches, products] = await Promise.all([
       get('/api/production/summary'),
       get('/api/production/trend', { group }),
@@ -632,7 +690,17 @@ export const production = {
       `)}
     `;
 
-    productionChart(root.querySelector('#pr-trend'), tr);
+    productionChart(root.querySelector('#pr-trend'), tr, {
+      onClick: (row) => {
+        if (!row) return;
+        if (production.group === 'day') return;
+        production.group = 'day';
+        state.filters.from = row.from_date;
+        state.filters.to = row.to_date;
+        document.dispatchEvent(new CustomEvent('qc:filters-changed'));
+        production.render(document.getElementById('page-root') || root);
+      }
+    });
     barH(root.querySelector('#pr-wc'), wcs.map((r) => ({ ...r, defects: r.production })), { valueName: 'تولید', color: '#3f9e78' });
     barH(root.querySelector('#pr-domain'), domains.map((r) => ({ ...r, defects: r.production })), { valueName: 'تولید', color: '#3f9e78' });
     barH(root.querySelector('#pr-branch'), branches.map((r) => ({ ...r, defects: r.production })), { valueName: 'تولید', color: '#3f9e78' });
@@ -640,6 +708,7 @@ export const production = {
     root.querySelectorAll('#prod-group button').forEach((b) => {
       b.addEventListener('click', () => {
         production.group = b.dataset.g;
+        state.trendGroup = b.dataset.g;
         const shell = root.closest('.app-main') || document;
         production.render(document.getElementById('page-root') || shell);
       });
@@ -904,6 +973,194 @@ export const admin = {
   }
 };
 
+/* ============================================================ تحلیل گام‌به‌گام (دریل‌داون) */
+export const drill = {
+  id: 'drill',
+  title: 'تحلیل گام‌به‌گام عیوب',
+  subtitle: 'از روز تا ریزِ تعمیرات: تاریخ ← محصول ← کد عیب ← قطعه، اقدام تعمیرات، ریشه 6M و توضیحات تعمیرات',
+  roles: ['admin', 'executive', 'expert'],
+  async render(root) {
+    if (!state.drill) state.drill = { date: null, product: null, defect: null };
+    root.innerHTML = loadingCard();
+    const tree = await get('/api/drill');
+    const d = state.drill;
+
+    const allDays = tree.days || [];
+    const day = d.date ? allDays.find((x) => x.date === d.date) : null;
+    const product = day && d.product ? day.products.find((p) => p.code === d.product) : null;
+    const defect = product && d.defect ? product.defectList.find((x) => x.code === d.defect) : null;
+
+    const crumbs = [];
+    crumbs.push({ label: `کل بازه (${faInt(allDays.length)} روز)`, level: 0 });
+    if (day) crumbs.push({ label: `روز ${day.date}`, level: 1 });
+    if (product) crumbs.push({ label: product.name, level: 2 });
+    if (defect) crumbs.push({ label: `${defect.code}`, level: 3 });
+
+    let scopeDefects = tree.totals.defects;
+    let scopeProduction = tree.totals.production;
+    let scopeRecords = tree.totals.records;
+    if (day) { scopeDefects = day.defects; scopeProduction = day.production; scopeRecords = day.records; }
+    if (product) { scopeDefects = product.defects; scopeProduction = product.production; scopeRecords = product.records; }
+    if (defect) { scopeDefects = defect.qty; scopeRecords = defect.records; }
+
+    let body = '';
+    let csv = { columns: {}, rows: [] };
+
+    if (!day) {
+      // سطح ۱: روزها
+      csv = {
+        columns: { date: 'تاریخ', defects: 'تعداد عیب', production: 'تعداد تولید', ppm: 'PPM', records: 'تعداد رکورد', products: 'تعداد محصول' },
+        rows: allDays.map((x) => ({
+          date: x.date, defects: x.defects, production: x.production, ppm: Math.round(x.ppm),
+          records: x.records, products: x.products.length
+        }))
+      };
+      body = dataTable({
+        columns: {
+          date: 'تاریخ', defects: 'تعداد عیب', production: 'تعداد تولید', ppm: 'PPM',
+          records: 'تعداد رکورد', products: 'تعداد محصول'
+        },
+        rows: allDays.map((x) => ({
+          date: x.date, defects: faInt(x.defects), production: faInt(x.production),
+          ppm: faInt(x.ppm), records: faInt(x.records), products: faInt(x.products.length)
+        })),
+        onRowClass: () => 'drill-row',
+        maxHeight: '520px'
+      });
+    } else if (!product) {
+      // سطح ۲: محصولاتِ آن روز
+      csv = {
+        columns: { name: 'محصول', code: 'کد محصول', stage: 'زیرگروه', defects: 'تعداد عیب', production: 'تعداد تولید', ppm: 'PPM', records: 'تعداد رکورد', defect_codes: 'تعداد کد عیب' },
+        rows: day.products.map((p) => ({
+          name: p.name, code: p.code, stage: p.stage, defects: p.defects, production: p.production,
+          ppm: Math.round(p.ppm), records: p.records, defect_codes: p.defectList.length
+        }))
+      };
+      body = dataTable({
+        columns: {
+          name: 'محصول', code: 'کد محصول', stage: 'زیرگروه', defects: 'تعداد عیب',
+          production: 'تعداد تولید', ppm: 'PPM', records: 'تعداد رکورد', defect_codes: 'تعداد کد عیب'
+        },
+        rows: day.products.map((p) => ({
+          name: p.name, code: p.code, stage: p.stage, defects: faInt(p.defects),
+          production: faInt(p.production), ppm: faInt(p.ppm), records: faInt(p.records),
+          defect_codes: faInt(p.defectList.length)
+        })),
+        onRowClass: () => 'drill-row',
+        maxHeight: '520px'
+      });
+    } else if (!defect) {
+      // سطح ۳: کدهای عیبِ آن محصول در آن روز
+      const sum = product.defectList.reduce((a, b) => a + b.qty, 0) || 1;
+      csv = {
+        columns: { code: 'کد عیب', desc: 'شرح عیب', qty: 'تعداد عیب', share: 'سهم از عیوب محصول (٪)', records: 'تعداد رکورد' },
+        rows: product.defectList.map((x) => ({
+          code: x.code, desc: x.desc, qty: x.qty, share: Number(((x.qty / sum) * 100).toFixed(1)), records: x.records
+        }))
+      };
+      body = dataTable({
+        columns: { code: 'کد عیب', desc: 'شرح عیب', qty: 'تعداد عیب', share: 'سهم از عیوب محصول', records: 'تعداد رکورد' },
+        rows: product.defectList.map((x) => ({
+          code: x.code, desc: x.desc || '—', qty: faInt(x.qty),
+          share: `${faDec((x.qty / sum) * 100, 1)}٪`, records: faInt(x.records)
+        })),
+        onRowClass: () => 'drill-row',
+        maxHeight: '520px'
+      });
+    } else {
+      // سطح ۴: ریز رکوردها با جزئیات تعمیرات
+      csv = {
+        columns: {
+          station: 'ایستگاه', qty: 'تعداد عیب', part_name: 'قطعه', part_code: 'کد قطعه',
+          part_family: 'خانواده قطعه', supplier: 'تامین‌کننده', repair_action: 'اقدام تعمیرات',
+          cause_6m: 'ریشه (6M)', failure_mode: 'حالت خرابی', repair_desc: 'توضیحات تعمیرات',
+          fix_min: 'زمان رفع عیب (دقیقه)', report: 'گزارش مبدا'
+        },
+        rows: defect.rows
+      };
+      body = dataTable({
+        columns: {
+          station: 'ایستگاه', qty: 'تعداد عیب', part_name: 'قطعه', part_code: 'کد قطعه',
+          part_family: 'خانواده قطعه', supplier: 'تامین‌کننده', repair_action: 'اقدام تعمیرات',
+          cause_6m: 'ریشه (6M)', failure_mode: 'حالت خرابی', repair_desc: 'توضیحات تعمیرات',
+          fix_min: 'زمان رفع عیب (دقیقه)', report: 'گزارش مبدا'
+        },
+        rows: defect.rows.map((r) => ({
+          station: r.station, qty: faInt(r.qty), part_name: r.part_name || '—', part_code: r.part_code || '—',
+          part_family: r.part_family || '—', supplier: r.supplier || '—', repair_action: r.repair_action || '—',
+          cause_6m: r.cause_6m || '—', failure_mode: r.failure_mode || '—', repair_desc: r.repair_desc || '—',
+          fix_min: r.fix_min ? faDec(r.fix_min, 0) : '—', report: r.report || '—'
+        })),
+        maxHeight: '520px'
+      });
+    }
+
+    const levelTitle = !day ? '۱) روزها'
+      : !product ? `۲) محصولاتِ روز ${day.date}`
+      : !defect ? `۳) کدهای عیبِ «${product.name}» در ${day.date}`
+      : `۴) ریزِ رکوردهای عیب ${defect.code} — ${product.name} — ${day.date}`;
+    const levelHint = !day ? 'روی هر روز کلیک کنید تا محصولات و عیوب همان روز را ببینید'
+      : !product ? 'روی هر محصول کلیک کنید تا کدهای عیب آن را ببینید'
+      : !defect ? 'روی هر کد عیب کلیک کنید تا ریزِ اقدام تعمیرات، قطعه و توضیحات را ببینید'
+      : 'این ریزترین سطح تحلیل است: چه قطعه‌ای، چه اقدامی و توضیح تعمیرات چه بوده است';
+
+    root.innerHTML = `
+      ${grid(4, [
+        kpiCard({ label: defectWord() + ' در این سطح', value: faInt(scopeDefects), unit: 'مورد', info: state.source, tone: 'warn' }),
+        kpiCard({ label: 'تعداد تولیدِ مرتبط', value: faInt(scopeProduction), unit: 'دستگاه', info: 'production' }),
+        kpiCard({ label: 'شاخص PPM', value: faInt(scopeProduction > 0 ? (scopeDefects / scopeProduction) * 1e6 : 0), info: 'ppm', tone: 'warn' }),
+        kpiCard({ label: 'تعداد رکورد', value: faInt(scopeRecords), unit: 'ردیف', tone: 'muted' })
+      ].join(''), 'kpi-grid')}
+      ${grid(1, cardShell({
+        title: levelTitle,
+        subtitle: levelHint,
+        info: 'drill',
+        actions: `<button class="btn btn-ghost" id="drill-csv">خروجی اکسل (CSV)</button>`,
+        body: `
+          <div class="drill-crumbs">
+            <span class="drill-hint">مسیر تحلیل:</span>
+            ${crumbs.map((c) => `<button class="drill-crumb ${c.level === crumbs.length - 1 ? 'current' : ''}" data-level="${c.level}">${escapeHtml(c.label)}</button>`).join('<span class="drill-hint">›</span>')}
+          </div>
+          ${body}
+        `,
+        foot: sourceNote()
+      }))}
+    `;
+
+    root.querySelectorAll('.drill-crumb').forEach((b) => {
+      b.addEventListener('click', () => {
+        const level = Number(b.dataset.level);
+        state.drill = {
+          date: level >= 1 ? state.drill.date : null,
+          product: level >= 2 ? state.drill.product : null,
+          defect: level >= 3 ? state.drill.defect : null
+        };
+        rerender(drill, root);
+      });
+    });
+    root.querySelectorAll('.drill-row').forEach((tr, i) => {
+      tr.addEventListener('click', () => {
+        if (!day) {
+          state.drill = { date: allDays[i].date, product: null, defect: null };
+        } else if (!product) {
+          state.drill = { date: day.date, product: day.products[i].code, defect: null };
+        } else if (!defect) {
+          state.drill = { date: day.date, product: product.code, defect: product.defectList[i].code };
+        } else return;
+        rerender(drill, root);
+      });
+    });
+    const csvBtn = root.querySelector('#drill-csv');
+    if (csvBtn) {
+      csvBtn.addEventListener('click', () => {
+        const name = `تحلیل-${state.source}-${day ? day.date : 'کل‌بازه'}${product ? '-' + product.code : ''}${defect ? '-' + defect.code : ''}.csv`;
+        downloadCsv(name, csv.columns, csv.rows);
+        toast('فایل CSV ساخته شد');
+      });
+    }
+  }
+};
+
 /* ============================================================ راهنما */
 export const guide = {
   id: 'guide',
@@ -967,6 +1224,30 @@ export const guide = {
         })}
       `)}
       ${grid(1, cardShell({
+        title: 'تحلیلِ درست یعنی چه؟ (تحلیل گام‌به‌گام)',
+        subtitle: 'صفحهٔ «تحلیل گام‌به‌گام» دقیقاً همین مسیر را می‌رود',
+        info: 'drill',
+        body: `
+            <div class="explain">
+              <p>یک تحلیل کاملِ عیب این پرسش‌ها را پاسخ می‌دهد؛ سامانه آن‌ها را در چهار گام
+              (در صفحهٔ <b>تحلیل گام‌به‌گام</b>) دنبال می‌کند:</p>
+              <ol>
+                <li><b>در چه تاریخی؟</b> فهرست روزها با تعداد عیب، تعداد تولیدِ همان روز و PPM.</li>
+                <li><b>کدام محصول؟</b> با کلیک روی یک روز، محصولاتِ همان روز با تعداد عیب،
+                    تولیدِ همان محصول در همان روز و PPM آن.</li>
+                <li><b>چه عیبی؟</b> با کلیک روی یک محصول، کدها و شرح عیب‌های آن با تعداد و سهم هر کد.</li>
+                <li><b>تعمیرات چه کرده؟</b> با کلیک روی یک کد عیب، ریزِ هر رکورد: ایستگاه،
+                    <b>قطعه</b> و کد/خانواده/تامین‌کنندهٔ آن، <b>اقدام تعمیرات</b>، <b>ریشهٔ عیب (6M)</b>،
+                    حالت خرابی، زمان رفع عیب و <b>توضیحات تعمیرات</b> که واحد تعمیرات در فایل
+                    «اطلاعات جامع کیفیت» ثبت کرده است.</li>
+              </ol>
+              <p>در هر سطح می‌توانید <b>خروجی CSV/اکسل</b> بگیرید. همچنین در هر نمودار روند
+              (نمای کلی، مدیریتی، حین تولید، اسناد بازرسی، تولید) با <b>کلیک روی یک ماه/هفته/فصل</b>،
+              نمودار به <b>تفکیکِ روزِ همان بازه</b> می‌رود و بالای صفحه نوارِ بازه با دکمهٔ
+              «بازگشت به کل بازه» ظاهر می‌شود.</p>
+            </div>`
+        }))}
+      ${grid(1, cardShell({
         title: 'نکته مهم درباره گزارش بازرسی',
         body: `<div class="explain warning">
             <p>در فایل «گزارش عیب‌های سند بازرسی»، برخی عیب‌ها زیر <b>دو عنوان عملیات آزمایش</b> ثبت شده‌اند
@@ -983,5 +1264,5 @@ export const guide = {
   }
 };
 
-export const PAGES = { home, management, inprocess, inspection, pfmea, production, records: recordsPage, admin, guide };
+export const PAGES = { home, drill, management, inprocess, inspection, pfmea, production, records: recordsPage, admin, guide };
 export { infoPopoverHtml };

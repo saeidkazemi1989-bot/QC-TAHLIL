@@ -3,12 +3,14 @@ import { faInt, faDec } from './core.js';
 
 const PALETTE = ['#2f6fb3', '#e08a2e', '#3f9e78', '#c0504d', '#7a63c9', '#2aa1b3', '#b8873b', '#8b6f47', '#5b8def', '#cf5c8a'];
 
-export function chart(node, option) {
+export function chart(node, option, { onClick = null } = {}) {
   const inst = window.echarts.init(node, null, { renderer: 'canvas' });
   inst.setOption(option, true);
+  if (onClick) inst.on('click', (p) => onClick(p, inst));
   const ro = new ResizeObserver(() => inst.resize());
   ro.observe(node);
   node.__chart = inst;
+  if (onClick) node.classList.add('chart-clickable');
   return inst;
 }
 
@@ -30,7 +32,7 @@ function tooltip(extra = {}) {
 
 /** نمودار میله‌ای افقی (مناسب رتبه‌بندی) */
 export function barH(node, data, {
-  valueName = 'تعداد عیب', color = PALETTE[0], unit = '', showPpm = false, limit = 15
+  valueName = 'تعداد عیب', color = PALETTE[0], unit = '', showPpm = false, limit = 15, onClick = null
 } = {}) {
   const rows = data.slice(0, limit).slice().reverse();
   return chart(node, {
@@ -66,7 +68,7 @@ export function barH(node, data, {
         color: '#334155'
       }
     }]
-  });
+  }, { onClick: onClick ? (p) => onClick(rows[p.dataIndex], p) : null });
 }
 
 /** پارتو: ستون‌های تعداد عیب + خط درصد تجمعی */
@@ -112,7 +114,7 @@ export function pareto(node, data, { limit = 12, valueName = 'تعداد عیب'
 }
 
 /** نمودار روند: ستون تولید + خط PPM (و عیوب) */
-export function trendCombo(node, rows, { target = 0 } = {}) {
+export function trendCombo(node, rows, { target = 0, onClick = null, defectLabel = 'تعداد عیوب' } = {}) {
   const labels = rows.map((r) => r.label || r.key);
   const series = [
     {
@@ -172,11 +174,11 @@ export function trendCombo(node, rows, { target = 0 } = {}) {
       { type: 'value', name: 'PPM', nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { show: false } }
     ],
     series
-  });
+  }, { onClick: onClick ? (p) => onClick(rows[p.dataIndex], p) : null });
 }
 
 /** نمودار دونات (ترکیب) */
-export function donut(node, data, { valueName = 'تعداد عیب' } = {}) {
+export function donut(node, data, { valueName = 'تعداد عیب', onClick = null } = {}) {
   const rows = data.slice(0, 10);
   return chart(node, {
     color: PALETTE,
@@ -197,7 +199,7 @@ export function donut(node, data, { valueName = 'تعداد عیب' } = {}) {
       label: { show: false },
       data: rows.map((r) => ({ name: r.label, value: r.defects }))
     }]
-  });
+  }, { onClick: onClick ? (p) => onClick(rows[p.dataIndex], p) : null });
 }
 
 /** نمودار پراکندگی (تولید در برابر PPM) */
@@ -268,7 +270,7 @@ export function deltaBars(node, rows, { valueName = 'تغییر PPM' } = {}) {
 }
 
 /** روند ساده تولید */
-export function productionChart(node, rows) {
+export function productionChart(node, rows, { onClick = null } = {}) {
   const labels = rows.map((r) => r.key);
   return chart(node, {
     legend: { data: ['تولید سالم', 'ضایعات', 'پرسنل'], textStyle: axisLabelStyle, top: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 8 },
@@ -284,7 +286,7 @@ export function productionChart(node, rows) {
       { name: 'ضایعات', type: 'bar', data: rows.map((r) => r.scrap), itemStyle: { color: PALETTE[1], borderRadius: [3, 3, 0, 0] }, barMaxWidth: 20 },
       { name: 'پرسنل', type: 'line', yAxisIndex: 1, data: rows.map((r) => r.personnel), itemStyle: { color: PALETTE[2] }, lineStyle: { width: 2, type: 'dotted' } }
     ]
-  });
+   }, { onClick: onClick ? (p) => onClick(rows[p.dataIndex], p) : null });
 }
 
 export { PALETTE };

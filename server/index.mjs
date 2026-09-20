@@ -17,7 +17,8 @@ import { runImport } from './etl.mjs';
 import { parseFilters } from './filters.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
-  productionSummary, productionTrend, productionBreakdown, meta, DIMENSIONS, matrix, times
+  productionSummary, productionTrend, productionBreakdown, meta, DIMENSIONS, matrix, times,
+  drillTree
 } from './analytics.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,9 +34,9 @@ app.use(express.urlencoded({ extended: true }));
 // ---------------------------------------------------------------- احراز هویت ساده
 const ROLE_LABELS = { admin: 'مدیر سیستم', executive: 'مدیر ارشد', expert: 'کارشناس کیفیت' };
 const ROLE_PAGES = {
-  admin: ['home', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
-  executive: ['home', 'management', 'production', 'guide'],
-  expert: ['home', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
+  admin: ['home', 'drill', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
+  executive: ['home', 'drill', 'management', 'production', 'guide'],
+  expert: ['home', 'drill', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
 };
 
 function sign(payload) {
@@ -154,6 +155,12 @@ app.get('/api/meta', requireAuth, (req, res) => {
 app.get('/api/summary', requireAuth, (req, res) => {
   const f = parseFilters(req.query);
   res.json(summary(f, f.source));
+});
+
+// تحلیل گام‌به‌گام: روز → محصول → کد عیب → ریز رکوردها (با توضیحات تعمیرات)
+app.get('/api/drill', requireAuth, (req, res) => {
+  const f = parseFilters(req.query);
+  res.json(drillTree(f, f.source));
 });
 
 app.get('/api/trend', requireAuth, (req, res) => {

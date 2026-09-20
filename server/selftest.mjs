@@ -51,6 +51,7 @@ for (const source of ['inprocess', 'inspection', 'polymer']) {
       ['matrix2', () => A.matrix(f, source, 'product', 'defect_group', 6, 4)],
       ['times', () => A.times(f, 'station', 5)],
       ['pfmea', () => A.pfmea(f, 10)],
+      ['drill', () => A.drillTree(f, source)],
       ['records', () => A.records(f, source, { page: 1, size: 10, sort: 'defect_qty' })],
       ['records-q', () => A.records({ ...f, q: 'TS' }, source, { page: 2, size: 5 })]
     ];

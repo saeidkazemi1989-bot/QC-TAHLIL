@@ -202,12 +202,13 @@ export function trend(f, source = 'inprocess', group = 'month') {
 
   const rows = db.prepare(`
     WITH def AS (
-      SELECT ${g.key} AS gkey, MIN(d.order_date) AS mind, COALESCE(SUM(d.defect_qty),0) AS defects
+      SELECT ${g.key} AS gkey, MIN(d.order_date) AS mind, MAX(d.order_date) AS maxd,
+             COALESCE(SUM(d.defect_qty),0) AS defects
       FROM ${view} d ${dw.sql}
       GROUP BY gkey
     ),
     ord AS (
-      SELECT ${gkeyOrder} AS gkey, MIN(o.order_date) AS mind,
+      SELECT ${gkeyOrder} AS gkey, MIN(o.order_date) AS mind, MAX(o.order_date) AS maxd,
              COALESCE(SUM(o.sound_qty),0) AS production,
              COALESCE(SUM(o.scrap_qty),0) AS scrap,
              COUNT(*) AS orders
@@ -215,15 +216,17 @@ export function trend(f, source = 'inprocess', group = 'month') {
       GROUP BY gkey
     ),
     keys AS (
-      SELECT gkey, MIN(mind) AS mind FROM (
-        SELECT gkey, mind FROM def UNION ALL SELECT gkey, mind FROM ord
+      SELECT gkey, MIN(mind) AS mind, MAX(maxd) AS maxd FROM (
+        SELECT gkey, mind, maxd FROM def UNION ALL SELECT gkey, mind, maxd FROM ord
       ) GROUP BY gkey
     )
     SELECT k.gkey                     AS key,
            COALESCE(ord.production,0) AS production,
            COALESCE(ord.scrap,0)      AS scrap,
            COALESCE(ord.orders,0)     AS orders,
-           COALESCE(def.defects,0)    AS defects
+           COALESCE(def.defects,0)    AS defects,
+           k.mind                     AS from_date,
+           k.maxd                     AS to_date
     FROM keys k
     LEFT JOIN def ON def.gkey = k.gkey
     LEFT JOIN ord ON ord.gkey = k.gkey
@@ -237,6 +240,8 @@ export function trend(f, source = 'inprocess', group = 'month') {
     defects: r.defects,
     scrap: r.scrap,
     orders: r.orders,
+    from_date: r.from_date || null,
+    to_date: r.to_date || null,
     ppm: r.production > 0 ? (r.defects / r.production) * 1e6 : 0
   }));
 }
@@ -460,6 +465,8 @@ export function productionTrend(f, group = 'day') {
   const keyProd = g.keyProd || g.key;
   const rows = db.prepare(`
     SELECT ${keyProd} AS key,
+           MIN(p.production_date) AS from_date,
+           MAX(p.production_date) AS to_date,
            COALESCE(SUM(p.sound_qty),0) AS production,
            COALESCE(SUM(p.scrap_qty),0) AS scrap,
            COALESCE(SUM(p.personnel),0) AS personnel,
@@ -608,4 +615,170 @@ export function times(f, dim = 'station', limit = 15) {
     ORDER BY (COALESCE(SUM(d.fix_time_min),0) + COALESCE(SUM(d.retest_time_min),0) + COALESCE(SUM(d.troubleshoot_time_min),0)) DESC
     LIMIT ${Number(limit) || 15}
   `).all(dw.params);
+}
+
+// ---------------------------------------------------------------- تحلیل گام‌به‌گام (دریل‌داون)
+/**
+ * درخت تحلیل: روز → محصول → کد عیب → ریز رکوردها.
+ * هدف: پاسخ به این پرسش که «در این تاریخ، کدام محصول، با کدام عیب و چه تعداد،
+ * در برابر چه مقدار تولید، چه اقدام تعمیراتی روی کدام قطعه و با کدام ریشه 6M
+ * داشته و تعمیرات چه توضیحی ثبت کرده است».
+ */
+export function drillTree(f, source = 'inprocess') {
+  const db = getDb();
+  const view = viewFor(source);
+  const dw = defectWhere({ ...f, source }, 'd');
+  const ow = orderWhere(f, 'o');
+
+  // ستون‌هایی که فقط در برخی منابع وجود دارند (مثل شیفت در اسناد بازرسی)
+  const hasCols = {
+    inprocess: { shift: false, operation: false },
+    inspection: { shift: true, operation: true },
+    polymer: { shift: true, operation: true }
+  }[source] || { shift: false, operation: false };
+  const shiftExpr = hasCols.shift ? "COALESCE(d.shift, '')" : "''";
+  const operationExpr = hasCols.operation ? "COALESCE(d.operation, '')" : "''";
+
+  const rows = db.prepare(`
+    SELECT d.order_date                                   AS date,
+           d.product_code                                 AS code,
+           COALESCE(d.product_name_dim, d.product_code)   AS name,
+           COALESCE(d.stage, 'سایر')                      AS stage,
+           COALESCE(d.station, 'نامشخص')                  AS station,
+           COALESCE(d.defect_code, 'نامشخص')              AS defect_code,
+           COALESCE(d.defect_desc, '')                    AS defect_desc,
+           COALESCE(d.defect_qty, 0)                      AS qty,
+           COALESCE(d.cause_6m, '')                       AS cause_6m,
+           COALESCE(d.failure_mode, '')                   AS failure_mode,
+           COALESCE(d.part_code, '')                      AS part_code,
+           COALESCE(d.part_name, '')                      AS part_name,
+           COALESCE(d.part_family, '')                    AS part_family,
+           COALESCE(d.supplier, '')                       AS supplier,
+           COALESCE(d.repair_action, '')                  AS repair_action,
+           COALESCE(d.repair_desc, '')                    AS repair_desc,
+           COALESCE(d.fix_time_min, 0)                    AS fix_min,
+           COALESCE(d.troubleshoot_time_min, 0)           AS troubleshoot_min,
+           COALESCE(d.retest_time_min, 0)                 AS retest_min,
+           ${shiftExpr}                                   AS shift,
+           ${operationExpr}                               AS operation,
+           COALESCE(d.report, '')                         AS report
+    FROM ${view} d ${dw.sql}
+    ORDER BY d.order_date, d.product_code, d.defect_code
+  `).all(dw.params);
+
+  // تولید به تفکیک روز (مخرج PPMِ روز)
+  const prodDay = new Map();
+  for (const r of db.prepare(`
+    SELECT o.order_date AS date, COALESCE(SUM(o.sound_qty), 0) AS production
+    FROM v_order o ${ow.sql} GROUP BY o.order_date`).all(ow.params)) {
+    prodDay.set(r.date, r.production);
+  }
+  // تولید به تفکیک روز + محصول
+  const prodDayProduct = new Map();
+  for (const r of db.prepare(`
+    SELECT o.order_date AS date, o.product_code AS code, COALESCE(SUM(o.sound_qty), 0) AS production
+    FROM v_order o ${ow.sql} GROUP BY o.order_date, o.product_code`).all(ow.params)) {
+    prodDayProduct.set(`${r.date}|${r.code}`, r.production);
+  }
+
+  const days = new Map();
+  for (const r of rows) {
+    const date = r.date || 'نامشخص';
+    if (!days.has(date)) {
+      days.set(date, {
+        date,
+        defects: 0,
+        records: 0,
+        production: prodDay.get(date) || 0,
+        products: new Map()
+      });
+    }
+    const day = days.get(date);
+    day.defects += r.qty || 0;
+    day.records += 1;
+
+    if (!day.products.has(r.code)) {
+      day.products.set(r.code, {
+        code: r.code,
+        name: r.name,
+        stage: r.stage,
+        defects: 0,
+        records: 0,
+        production: prodDayProduct.get(`${date}|${r.code}`) || 0,
+        defectList: new Map()
+      });
+    }
+    const product = day.products.get(r.code);
+    product.defects += r.qty || 0;
+    product.records += 1;
+
+    if (!product.defectList.has(r.defect_code)) {
+      product.defectList.set(r.defect_code, {
+        code: r.defect_code,
+        desc: r.defect_desc,
+        qty: 0,
+        records: 0,
+        rows: []
+      });
+    }
+    const defect = product.defectList.get(r.defect_code);
+    defect.qty += r.qty || 0;
+    defect.records += 1;
+    defect.rows.push({
+      station: r.station,
+      shift: r.shift,
+      operation: r.operation,
+      report: r.report,
+      qty: r.qty,
+      part_code: r.part_code,
+      part_name: r.part_name,
+      part_family: r.part_family,
+      supplier: r.supplier,
+      repair_action: r.repair_action,
+      repair_desc: r.repair_desc,
+      cause_6m: r.cause_6m,
+      failure_mode: r.failure_mode,
+      fix_min: r.fix_min,
+      troubleshoot_min: r.troubleshoot_min,
+      retest_min: r.retest_min
+    });
+  }
+
+  const dayList = [...days.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  let totalDefects = 0;
+  let totalRecords = 0;
+  const out = dayList.map((day) => {
+    totalDefects += day.defects;
+    totalRecords += day.records;
+    const products = [...day.products.values()]
+      .sort((a, b) => b.defects - a.defects)
+      .map((p) => ({
+        ...p,
+        ppm: p.production > 0 ? (p.defects / p.production) * 1e6 : 0,
+        defectList: [...p.defectList.values()].sort((a, b) => b.qty - a.qty)
+      }));
+    return {
+      ...day,
+      products,
+      ppm: day.production > 0 ? (day.defects / day.production) * 1e6 : 0
+    };
+  });
+
+  // تولیدِ کلِ بازه (مطابق شاخص‌های اصلی) — مبنای PPM در سطح اول
+  const rangeProduction = db.prepare(
+    `SELECT COALESCE(SUM(o.sound_qty),0) AS production FROM v_order o ${ow.sql}`).get(ow.params).production || 0;
+  const totalProduction = rangeProduction;
+  return {
+    source,
+    from: f.from || null,
+    to: f.to || null,
+    totals: {
+      days: out.length,
+      defects: totalDefects,
+      records: totalRecords,
+      production: totalProduction,
+      ppm: totalProduction > 0 ? (totalDefects / totalProduction) * 1e6 : 0
+    },
+    days: out
+  };
 }

@@ -919,7 +919,7 @@ export async function importClean(db, filePath, fileName) {
             insIp.run({ ...common, sound_qty: 0, tool: cleanVal(get(row, 'tool')), location: cleanVal(get(row, 'loc')), rpn });
             loaded.inprocess += 1;
           } else {
-            insIns.run({ ...common, operation: null, rpn });
+            insIns.run({ ...common, shift: cleanVal(get(row, 'shift')), operation: null, rpn });
             loaded.inspection += 1;
           }
         } else if (tot > 0) {

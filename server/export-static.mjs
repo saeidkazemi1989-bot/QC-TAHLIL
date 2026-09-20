@@ -16,7 +16,8 @@ import { getDb, ready as dbReady, getSettings, RAW_DIR, ROOT } from './db.mjs';
 import { parseFilters } from './filters.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
-  productionSummary, productionTrend, productionBreakdown, meta, times, matrix, DIMENSIONS
+  productionSummary, productionTrend, productionBreakdown, meta, times, matrix, DIMENSIONS,
+  drillTree
 } from './analytics.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +59,8 @@ for (const source of sources) {
   put(`/api/matrix?source=${source}&row=product&col=defect&rows=10&cols=6`, matrix(f, source, 'product', 'defect', 10, 6));
   put(`/api/records?source=${source}&page=1&size=500&sort=defect_qty&dir=DESC`,
     { ...records(f, source, { page: 1, size: 500, sort: 'defect_qty', dir: 'DESC' }), columns: recordColumns(source) });
+  // تحلیل گام‌به‌گام (دریل‌داون) برای کل بازه
+  put(`/api/drill?source=${source}`, drillTree(f, source));
 }
 put('/api/times?source=inprocess&dim=station&limit=10', times(parseFilters({ source: 'inprocess' }), 'station', 10));
 put('/api/pfmea?source=inprocess&limit=60', pfmea(parseFilters({ source: 'inprocess' }), 60));
@@ -75,9 +78,9 @@ for (const source of sources) {
 // فراداده و مدیریت (فقط خواندنی)
 const metaInfo = meta();
 const rolePages = {
-  admin: ['home', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
-  executive: ['home', 'management', 'production', 'guide'],
-  expert: ['home', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
+  admin: ['home', 'drill', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
+  executive: ['home', 'drill', 'management', 'production', 'guide'],
+  expert: ['home', 'drill', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
 };
 const roleLabels = { admin: 'مدیر سیستم', executive: 'مدیر ارشد', expert: 'کارشناس کیفیت' };
 const users = db.prepare('SELECT username, display_name, role, active FROM app_user WHERE active = 1 ORDER BY id').all();

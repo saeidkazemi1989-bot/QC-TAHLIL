@@ -6,6 +6,7 @@ import { j2d, d2j, formatJalali, parseJalali, toFa, toEn } from './jalali.js';
 
 const PAGE_META = {
   home: { icon: '📊', label: 'نمای کلی', desc: 'خلاصه وضعیت کیفیت' },
+  drill: { icon: '🧭', label: 'تحلیل گام‌به‌گام', desc: 'روز ← محصول ← عیب ← تعمیرات' },
   management: { icon: '🏛️', label: 'داشبورد مدیریتی', desc: 'روند و مقایسه برای تصمیم‌گیری' },
   inprocess: { icon: '🔧', label: 'تحلیل حین تولید', desc: 'ریشه‌یابی ریز عیوب' },
   inspection: { icon: '🔍', label: 'اسناد بازرسی (OQC)', desc: 'دلایل مردودی در بازرسی' },
@@ -142,8 +143,8 @@ function renderShell() {
 
 /* ------------------------------------------------------------------ فیلترها */
 const FILTER_DEFS = [
-  { key: 'category', label: 'دسته محصول', options: () => state.meta.categories },
-  { key: 'stage', label: 'زیرگروه محصول', options: () => state.meta.stages },
+  { key: 'category', label: 'دسته محصول', options: () => (state.meta && state.meta.categories) || [] },
+  { key: 'stage', label: 'زیرگروه محصول', options: () => (state.meta && state.meta.stages) || [] },
   { key: 'branch', label: 'برنچ', options: () => state.meta.branches },
   { key: 'final_group', label: 'گروه محصول نهایی', options: () => state.meta.final_groups },
   { key: 'product_family', label: 'خانواده محصول', options: () => state.meta.product_families },
@@ -194,7 +195,16 @@ function buildFilterBar() {
     return;
   }
 
+  const drillFrom = state.filters?.from;
+  const drillTo = state.filters?.to;
   bar.innerHTML = `
+    ${(drillFrom || drillTo) ? `<div class="filter-row">
+      <div class="drill-banner">
+        <span>بازهٔ انتخاب‌شده: <b>${escapeHtml(drillFrom || 'ابتدا')}</b> تا <b>${escapeHtml(drillTo || 'انت‌ها')}</b>
+        — همهٔ نمودارها و جدول‌ها برای همین بازه هستند.</span>
+        <button id="drill-clear">بازگشت به کل بازه</button>
+      </div>
+    </div>` : ''}
     <div class="filter-row">
       <div class="seg" id="src-seg">
         <button data-src="inprocess" class="${source === 'inprocess' ? 'active' : ''}">عیوب حین تولید</button>
@@ -228,6 +238,17 @@ function buildFilterBar() {
     chips.appendChild(multiSelect(def, opts, selected));
   }
 
+  const clearBtn = bar.querySelector('#drill-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      state.filters.from = null;
+      state.filters.to = null;
+      state.trendGroup = state.trendGroup === 'day' ? 'month' : state.trendGroup;
+      buildFilterBar();
+      route(true);
+    });
+  }
+
   bar.querySelectorAll('#src-seg button').forEach((b) => {
     b.addEventListener('click', () => {
       state.source = b.dataset.src;
@@ -237,11 +258,13 @@ function buildFilterBar() {
     });
   });
   bar.querySelectorAll('#date-presets button').forEach((b) => {
+    // خودِ applyPreset نوار فیلتر را دوباره می‌سازد و صفحه را بازترسیم می‌کند
     b.addEventListener('click', () => applyPreset(b.dataset.preset));
   });
   bar.querySelector('#btn-apply').addEventListener('click', () => {
     state.filters.from = bar.querySelector('#f-from').value.trim();
     state.filters.to = bar.querySelector('#f-to').value.trim();
+    buildFilterBar();
     route(true);
   });
   bar.querySelector('#btn-clear').addEventListener('click', () => {
@@ -409,6 +432,12 @@ function setupInfoLayer() {
 
 /* ------------------------------------------------------------------ آغاز */
 window.addEventListener('hashchange', () => route());
+// صفحه‌ها پس از دریل‌داون (تغییر بازهٔ تاریخ) این رویداد را می‌فرستند
+document.addEventListener('qc:filters-changed', () => {
+  // اگر هنوز فراداده بارگذاری نشده (مثلاً نمونهٔ پیش از ورود) کاری انجام نمی‌دهیم
+  if (!state.meta) return;
+  if (document.getElementById('filter-bar')) buildFilterBar();
+});
 window.addEventListener('resize', () => {
   document.querySelectorAll('.chart').forEach((c) => c.__chart?.resize());
 });

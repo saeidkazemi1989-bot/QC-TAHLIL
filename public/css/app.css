@@ -223,6 +223,24 @@ a { color: var(--brand); text-decoration: none; }
 .card-foot { border-top: 1px dashed var(--line); padding: 8px 16px; color: var(--muted); font-size: 11.5px; }
 .chart { height: 300px; width: 100%; }
 .chart-lg { height: 380px; }
+.chart-clickable { cursor: pointer; }
+.chart-clickable::after { content: ''; }
+.drill-crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.drill-crumb {
+  border: 1px solid #d7dee8; background: #fff; color: #2f6fb3; border-radius: 999px;
+  padding: 4px 12px; font-size: 12px; cursor: pointer;
+}
+.drill-crumb:hover { background: #eef4fb; }
+.drill-crumb.current { background: #2f6fb3; color: #fff; border-color: #2f6fb3; cursor: default; }
+.drill-hint { font-size: 12px; color: #6b7280; margin-right: 4px; }
+.drill-row { cursor: pointer; }
+.drill-row:hover { background: #f3f8fd !important; }
+.drill-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #eef4fb; border: 1px solid #d3e2f2; border-radius: 10px; padding: 6px 12px; font-size: 12px; color: #234b73;
+}
+.drill-banner button { border: 1px solid #b9cfe6; background: #fff; color: #234b73; border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+.drill-banner button:hover { background: #dce9f7; }
 
 /* کارت شاخص */
 .kpi {
