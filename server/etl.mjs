@@ -761,6 +761,31 @@ export async function importClean(db, filePath, fileName) {
   db.prepare('DELETE FROM fact_inspection WHERE src_file = ?').run(fileName);
   db.prepare('DELETE FROM fact_production WHERE src_file = ?').run(fileName);
 
+  /* امضای ردیف‌های «سایر فایل‌ها»:
+     اگر یک ردیف با همین مشخصات قبلاً از فایل دیگری بارگذاری شده باشد،
+     دوباره شمرده نمی‌شود. این کار مانع دوباره‌شماری هنگام قرار گرفتن
+     چند گزارش با بازه‌های همپوشان در پوشه داده می‌شود. */
+  const sigOf = (o) => [o.report, o.date, o.code, o.station, o.defect, o.qty, o.prod, o.part, o.repair, o.six].join('|');
+  const otherSigs = new Set();
+  for (const r of db.prepare(`SELECT report, order_date, product_code, station, defect_code, defect_qty,
+                                     part_code, repair_desc, cause_6m, src_file FROM fact_inprocess`).all()) {
+    if (r.src_file === fileName) continue;
+    otherSigs.add(sigOf({ report: r.report, date: r.order_date, code: r.product_code, station: r.station,
+      defect: r.defect_code, qty: r.defect_qty, prod: 0, part: r.part_code, repair: r.repair_desc, six: r.cause_6m }));
+  }
+  for (const r of db.prepare(`SELECT report, order_date, product_code, station, defect_code, defect_qty,
+                                     part_code, repair_desc, cause_6m, src_file FROM fact_inspection`).all()) {
+    if (r.src_file === fileName) continue;
+    otherSigs.add(sigOf({ report: r.report, date: r.order_date, code: r.product_code, station: r.station,
+      defect: r.defect_code, qty: r.defect_qty, prod: 0, part: r.part_code, repair: r.repair_desc, six: r.cause_6m }));
+  }
+  for (const r of db.prepare(`SELECT report, production_date, product_code, station, sound_qty, src_file FROM fact_production`).all()) {
+    if (r.src_file === fileName) continue;
+    otherSigs.add(sigOf({ report: r.report, date: r.production_date, code: r.product_code, station: r.station,
+      defect: null, qty: 0, prod: r.sound_qty, part: null, repair: null, six: null }));
+  }
+  let duplicateRows = 0;
+
   const insIp = db.prepare(`
     INSERT INTO fact_inprocess
       (src_file, src_row, report, order_no, order_date, product_code, product_name, station,
@@ -829,11 +854,14 @@ export async function importClean(db, filePath, fileName) {
         upsertProduct(db, code, name, family, combined, finalGroup, branch);
 
         // کلید یکتا برای جلوگیری از شمارش دوباره ردیف‌های مشترک بین گزارش‌ها
-        const sig = [info.source, sheet.name, jdate, code, cleanVal(get(row, 'station')),
-          cleanVal(get(row, 'dcode')), dqty, tot, cleanVal(get(row, 'pcode')),
-          cleanVal(get(row, 'rep')), cleanVal(get(row, 'six'))].join('|');
+        const sig = sigOf({
+          report: info.label, date: jdate, code, station: cleanVal(get(row, 'station')),
+          defect: cleanVal(get(row, 'dcode')), qty: dqty, prod: tot,
+          part: cleanVal(get(row, 'pcode')), repair: cleanVal(get(row, 'rep')), six: cleanVal(get(row, 'six'))
+        });
         const n = (seen.get(sig) || 0) + 1;
         seen.set(sig, n);
+        // (حذف ردیف‌های تکراریِ بین فایل‌ها در پایان و به صورت یکپارچه انجام می‌شود)
 
         const common = {
           src_file: fileName,
@@ -902,9 +930,52 @@ export async function importClean(db, filePath, fileName) {
     rowsIn,
     rowsLoaded: loaded.inprocess + loaded.inspection + loaded.production,
     message: `عیب حین تولید: ${loaded.inprocess} | عیب بازرسی: ${loaded.inspection} | تولید: ${loaded.production}`
+      + (duplicateRows ? ` | ${duplicateRows} ردیف تکراری (قبلاً از فایل دیگر بارگذاری شده) نادیده گرفته شد` : '')
       + (skipped.length ? ` | ${skipped.join(' / ')}` : ''),
     detail: loaded
   };
+}
+
+/**
+ * حذف ردیف‌های تکراریِ بین چند گزارش.
+ * اگر یک ردیف با مشخصات یکسان در چند فایل باشد، فقط ردیف‌هایِ فایلی که نام آن
+ * در ترتیب الفبایی جلوتر است نگه داشته می‌شود؛ ردیف‌های تکراریِ درونِ یک فایل
+ * (که در منبع هم تکرارند) دست‌نخورده می‌مانند. این کار مستقل از ترتیب بارگذاری
+ * و تکرارپذیر است.
+ */
+export function dedupeAcrossFiles(db) {
+  let removed = 0;
+  const groups = [
+    {
+      table: 'fact_inprocess',
+      cols: ['report', 'order_date', 'product_code', 'station', 'defect_code', 'defect_qty',
+             'part_code', 'repair_desc', 'cause_6m']
+    },
+    {
+      table: 'fact_inspection',
+      cols: ['report', 'order_date', 'product_code', 'station', 'defect_code', 'defect_qty',
+             'part_code', 'repair_desc', 'cause_6m']
+    },
+    {
+      table: 'fact_production',
+      cols: ['report', 'production_date', 'product_code', 'station', 'sound_qty']
+    }
+  ];
+  for (const g of groups) {
+    const sel = g.cols.join(', ');
+    const match = g.cols.map((c) => `t.${c} IS k.${c}`).join(' AND ');
+    const info = db.prepare(`
+      DELETE FROM ${g.table} WHERE id IN (
+        SELECT t.id FROM ${g.table} t
+        JOIN (SELECT ${sel}, MIN(src_file) AS keep_file FROM ${g.table} GROUP BY ${sel}) k
+          ON ${match}
+        WHERE t.src_file IS NOT k.keep_file
+      )
+    `).run();
+    removed += info.changes || 0;
+  }
+  if (removed) log(`${removed} ردیف تکراری بین گزارش‌ها حذف شد`);
+  return removed;
 }
 
 // ---------------------------------------------------------------- اجرا
@@ -988,6 +1059,7 @@ export async function runImport({ files = null, removeMissing = false } = {}) {
     }
   }
 
+  dedupeAcrossFiles(db);
   rebuildDims(db);
   markInspectionDuplicates(db);
   rebuildOrders(db);
