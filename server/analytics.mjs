@@ -19,13 +19,15 @@ export function viewFor(source) {
 // ---------------------------------------------------------------- ابعاد
 export const DIMENSIONS = {
   station:         { label: 'ایستگاه',            key: "COALESCE(d.station,'نامشخص')",              label2: null, sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  category:        { label: 'دسته محصول',         key: "COALESCE(d.category,'سایر')",               label2: null, sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  stage:           { label: 'زیرگروه محصول',      key: "COALESCE(d.stage,'سایر')",                  label2: null, sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   process_domain:  { label: 'حوزه فرآیندی',       key: "COALESCE(d.process_domain,'سایر')",         sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   branch:          { label: 'برنچ',               key: "COALESCE(d.branch,'نامشخص')",               sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   final_group:     { label: 'گروه محصول نهایی',   key: "COALESCE(d.final_group,'نامشخص')",          sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   product_family:  { label: 'خانواده محصول',      key: "COALESCE(d.product_family,'نامشخص')",       sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   product_combined:{ label: 'نام محصول ترکیبی',   key: "COALESCE(d.product_combined,'نامشخص')",     sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   product:         { label: 'محصول (کد مرحله)',   key: "COALESCE(d.product_code,'نامشخص')",
-    label2: "COALESCE(d.product_name_dim, d.product_code) || CASE substr(COALESCE(d.product_code,''), 1, 3) WHEN '120' THEN ' · SMD' WHEN '121' THEN ' ، مونتاژ/وان قلع' WHEN '122' THEN ' ، تکمیل کاری' WHEN '123' THEN ' ، کنترل نهایی' WHEN '130' THEN ' ، بسته‌بندی' WHEN '320' THEN ' ، مونتاژ EMS' WHEN '331' THEN ' ، کنترل نهایی EMS' WHEN '332' THEN ' ، کنترل نهایی EMS' ELSE '' END",
+    label2: "COALESCE(d.product_name_dim, d.product_code) || ' · ' || COALESCE(d.stage, 'سایر')",
     sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   product_unified: { label: 'محصول (یکپارچه)',    key: "COALESCE(d.unified_name, d.product_name_dim, d.product_code)",
     label2: "COALESCE(d.unified_name, d.product_name_dim, d.product_code)",
@@ -503,6 +505,8 @@ export function meta() {
     FROM ${table} WHERE ${col} IS NOT NULL`).get();
 
   return {
+    categories: opt("SELECT DISTINCT category AS v FROM dim_product WHERE category IS NOT NULL ORDER BY category"),
+    stages: opt("SELECT DISTINCT stage AS v FROM dim_product WHERE stage IS NOT NULL ORDER BY stage"),
     branches: opt("SELECT DISTINCT branch AS v FROM dim_product WHERE branch IS NOT NULL ORDER BY branch"),
     final_groups: opt("SELECT DISTINCT final_group AS v FROM dim_product WHERE final_group IS NOT NULL ORDER BY final_group"),
     product_families: opt("SELECT DISTINCT product_family AS v FROM dim_product WHERE product_family IS NOT NULL ORDER BY product_family"),

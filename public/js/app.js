@@ -142,6 +142,8 @@ function renderShell() {
 
 /* ------------------------------------------------------------------ فیلترها */
 const FILTER_DEFS = [
+  { key: 'category', label: 'دسته محصول', options: () => state.meta.categories },
+  { key: 'stage', label: 'زیرگروه محصول', options: () => state.meta.stages },
   { key: 'branch', label: 'برنچ', options: () => state.meta.branches },
   { key: 'final_group', label: 'گروه محصول نهایی', options: () => state.meta.final_groups },
   { key: 'product_family', label: 'خانواده محصول', options: () => state.meta.product_families },

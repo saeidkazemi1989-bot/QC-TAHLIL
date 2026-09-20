@@ -9,7 +9,8 @@ export const LIST_FILTERS = [
   'branch', 'final_group', 'product_family', 'product_code',
   'station', 'process_domain', 'defect_code', 'defect_group',
   'cause_6m', 'shift', 'repair_action', 'supplier', 'part_family',
-  'failure_mode', 'operation', 'work_center', 'product_combined'
+  'failure_mode', 'operation', 'work_center', 'product_combined',
+  'category', 'stage'
 ];
 
 export function parseList(value) {
@@ -47,6 +48,8 @@ function listClause(alias, field, values, where, params, col) {
 
 /** فیلدهای مرتبط با محصول (هم در نماهای عیب و هم سفارش) */
 const PRODUCT_FIELDS = [
+  ['category', 'category'],
+  ['stage', 'stage'],
   ['branch', 'branch'],
   ['final_group', 'final_group'],
   ['product_family', 'product_family'],
@@ -68,17 +71,20 @@ const DEFECT_FIELDS = [
 const SOURCE_COLUMNS = {
   inprocess: new Set([
     'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
+    'category', 'stage',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'cause_6m', 'repair_action', 'supplier', 'part_family', 'failure_mode',
     'report', 'repair_desc'
   ]),
   inspection: new Set([
     'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
+    'category', 'stage',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'shift', 'operation', 'report', 'repair_desc'
   ]),
   polymer: new Set([
     'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
+    'category', 'stage',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'report', 'repair_desc', 'shift'
   ])
@@ -110,6 +116,12 @@ export function defectWhere(f, alias = 'd') {
     listClause(alias, key, f[key], where, params, col);
   }
   if (f.source === 'inspection') where.push(`COALESCE(${alias}.op_seq, 1) = 1`);
+  // ردیف‌های شیت پلیمر در همان جدول اسناد بازرسی ذخیره می‌شوند؛ در منبع
+  // «اسناد بازرسی» (و حین تولید) نباید دیده شوند (منبع مستقل «پلیمر» دارند)
+  if (f.source !== 'polymer') {
+    where.push(`COALESCE(${alias}.report, '') <> @polymer_report`);
+    params.polymer_report = 'پلیمر';
+  }
   // منبع پلیمر: فقط ردیف‌هایِ گزارش پلیمر (که در جدول اسناد بازرسی ذخیره می‌شوند)
   if (f.source === 'polymer') {
     where.push(`COALESCE(${alias}.report, '') = @report_scope`);
@@ -151,6 +163,8 @@ export function productionWhere(f, alias = 'p') {
   if (f.from) { where.push(`${alias}.production_date >= @from`); params.from = f.from; }
   if (f.to) { where.push(`${alias}.production_date <= @to`); params.to = f.to; }
   const prodfields = [
+    ['category', 'category'],
+    ['stage', 'stage'],
     ['branch', 'branch'],
     ['final_group', 'final_group'],
     ['product_family', 'product_family'],

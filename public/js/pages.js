@@ -31,7 +31,7 @@ function rerender(page, root) {
 
 function sourceNote() {
   if (state.source === 'inprocess') return 'منبع: گزارش کیفیت حین تولید (ریز عیوب ثبت‌شده در ایستگاه‌ها)';
-  if (state.source === 'polymer') return 'منبع: گزارش پلیمر (کالاهای ۱۳۰* در ایستگاه بسته‌بندی؛ تولید از مرکز کاری بسته‌بندی)';
+  if (state.source === 'polymer') return 'منبع: گزارش پلیمر (هر کد کالا که با ۲ شروع شود؛ عیب از سند بازرسی + ضایعاتِ سند عملکرد، تولید = مقدار سالمِ همه مراکز پلیمر)';
   return 'منبع: اسناد بازرسی (تعداد دستگاه معیوب؛ ردیف‌های تکراری عملیات حذف شده است)';
 }
 
@@ -51,13 +51,15 @@ export const home = {
   roles: ['admin', 'executive', 'expert'],
   async render(root) {
     root.innerHTML = loadingCard();
-    const [s, tr, defectBd, stationBd, productBd, causeBd] = await Promise.all([
+    const [s, tr, defectBd, stationBd, productBd, causeBd, catBd, stageBd] = await Promise.all([
       get('/api/summary'),
       get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 12 }),
       get('/api/breakdown', { dim: 'station', limit: 10 }),
       get('/api/breakdown', { dim: 'product_unified', limit: 10 }),
-      get('/api/breakdown', { dim: state.source === 'inprocess' ? 'cause_6m' : 'shift', limit: 8 })
+      get('/api/breakdown', { dim: state.source === 'inprocess' ? 'cause_6m' : 'shift', limit: 8 }),
+      get('/api/breakdown', { dim: 'category', limit: 6 }),
+      get('/api/breakdown', { dim: 'stage', limit: 8 })
     ]);
 
     const kpis = [
@@ -108,6 +110,20 @@ export const home = {
           body: '<div class="chart" id="home-cause"></div>'
         })}
       `)}
+      ${grid(2, `
+        ${cardShell({
+          title: 'دسته محصول (الکترونیک / پلیمر / EMS)',
+          subtitle: 'بر اساس پیشوند کد کالا: ۱ = الکترونیک، ۲ = پلیمر، ۳ = EMS',
+          info: 'category',
+          body: '<div class="chart" id="home-category"></div>'
+        })}
+        ${cardShell({
+          title: 'زیرگروه محصول (مرحله کد)',
+          subtitle: 'هر دسته چند زیرگروه دارد: SMD، مونتاژ، تکمیل کاری، دایال، تزریق و ...',
+          info: 'stage',
+          body: '<div class="chart" id="home-stage"></div>'
+        })}
+      `)}
     `;
 
     wireSeg(root, 'home-period', (g) => { state.trendGroup = g; rerender(home, root); });
@@ -117,6 +133,10 @@ export const home = {
     if (stationBd.length) barH(root.querySelector('#home-station'), stationBd, { valueName: defectWord() });
     if (productBd.length) barH(root.querySelector('#home-product'), productBd, { valueName: defectWord() });
     if (causeBd.length) donut(root.querySelector('#home-cause'), causeBd, { valueName: defectWord() });
+    const catEl = root.querySelector('#home-category');
+    if (catBd.length) donut(catEl, catBd, { valueName: defectWord() }); else catEl.innerHTML = emptyCard();
+    const stageEl = root.querySelector('#home-stage');
+    if (stageBd.length) barH(stageEl, stageBd, { valueName: defectWord() }); else stageEl.innerHTML = emptyCard();
   }
 };
 
@@ -915,8 +935,13 @@ export const guide = {
               <ul>
                 <li><b>بازرسی چشمی (QV)، SMD، ICT، کنترل نهایی ELE</b> — عیوب حین تولید.</li>
                 <li><b>تست نهایی ELE، تست نهایی EMS، کنترل نهایی EMS</b> — عیوب اسناد بازرسی.</li>
-                <li><b>پلیمر</b> — کالاهای ۱۳۰* که فقط در ایستگاه «بسته‌بندی» ثبت می‌شوند.</li>
+                <li><b>پلیمر</b> — کالاهایی که کدشان با ۲ شروع می‌شود (عیب از سند بازرسی + ضایعاتِ همان سند عملکرد).</li>
               </ul>
+              <p><b>دسته‌بندی کد کالا:</b> رقم اول کد، دسته محصول را مشخص می‌کند:
+              <b>۱ = الکترونیک</b> (۱۲۰ SMD، ۱۲۱ مونتاژ/وان قلع، ۱۲۲ تکمیل کاری، ۱۲۳ کنترل نهایی، ۱۳۰ محصول کامل)،
+              <b>۲ = پلیمر</b> (۲۲۱ چاپ و لیزر دایال، ۲۲۲ تزریق و کنترل نهایی دایال، ۲۲۵ قطعات نیمه‌ساخته، ۲۳۲ تزریق قطعات، ۲۳۳ تزریق سنگین)،
+              <b>۳ = EMS</b> (۳۲۰، ۳۳۱، ۳۳۲). کدهای ۱۳۰ (محصول کامل) و ۷۳۰ (دسته‌سیم) در هیچ شیتی نمی‌آیند.
+              در نمودارهای «دسته محصول» و «زیرگروه محصول» همین تقسیم‌بندی را می‌بینید.</p>
               <p>در هر بخش، ردیف‌های عیب و ردیف‌های تولید کنار هم هستند؛ به همین دلیل مخرجِ PPM هر بخش
               دقیقاً از همان مراکز کاریِ خودش گرفته می‌شود.</p>
               <p><b>نام محصول:</b> هر محصول چند کد دارد (هر کد یک مرحله تولید). جلوی نام محصول، مرحله آن

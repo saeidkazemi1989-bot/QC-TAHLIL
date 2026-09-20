@@ -95,6 +95,8 @@ const DEFECT_GROUPS = [
 
 function defectGroup(code) {
   if (!code) return 'نامشخص';
+  // ضایعاتِ ثبت‌شده در سند عملکرد (مخصوص شیت پلیمر) کد لاتین ندارد
+  if (String(code).startsWith('ضایعات')) return 'ضایعات تولید';
   const c = String(code).toUpperCase().replace(/[^A-Z]/g, '');
   for (const g of DEFECT_GROUPS) {
     if (g.prefixes.some((p) => c.startsWith(p))) return g.group;
@@ -959,12 +961,61 @@ export async function importClean(db, filePath, fileName) {
 /**
  * یکپارچه‌سازی نام محصول.
  * هر محصول در سیستم چند کد دارد (هر کد = یک مرحله تولید: 120=SMD،
- * 121=مونتاژ/وان قلع، 122=تکمیل کاری، 123=کنترل نهایی، 130=بسته‌بندی،
- * 32x/33x=EMS). برای اینکه در گزارش نام یک محصول تکرار نشود، همه کدهای
- * یک محصول زیر یک «نام یکپارچه» جمع می‌شوند و کدِ آخرین مرحله به عنوان
- * مرحله نهایی علامت می‌خورد تا مخرج تولید دوبار شمرده نشود.
+ * 121=مونتاژ/وان قلع، 122=تکمیل کاری، 123=کنترل نهایی، 130=محصول کامل،
+ * 22x/23x=پلیمر، 32x/33x=EMS). برای اینکه در گزارش نام یک محصول تکرار نشود،
+ * همه کدهای یک محصول زیر یک «نام یکپارچه» جمع می‌شوند و کدِ آخرین مرحله به
+ * عنوان مرحله نهایی علامت می‌خورد تا مخرج تولید دوبار شمرده نشود.
  */
-export const STAGE_ORDER = ['120', '121', '122', '123', '130', '320', '331', '332'];
+export const STAGE_ORDER = ['120', '121', '122', '123', '130',
+  '221', '222', '225', '232', '233', '320', '331', '332'];
+
+/**
+ * دسته‌بندی کدهای کالا (تعریفِ کارفرما):
+ *   1* = الکترونیک   120 SMD | 121 مونتاژ/وان قلع (qv و فالت) |
+ *                    122 تکمیل کاری (ICT فقط برای خانوادهٔ نود و عیب ICT_01) |
+ *                    123 کنترل نهایی | 130 محصول کامل (خارج از تحلیل عیب)
+ *   2* = پلیمر       221 چاپ و لیزر دایال | 222 تزریق و کنترل نهایی دایال |
+ *                    225 قطعات نیمه‌ساخته | 232 تزریق قطعات | 233 تزریق سنگین
+ *   3* = EMS         320 مونتاژ و تست | 331 مجموعه‌سازی | 332 مونتاژ و بسته‌بندی
+ */
+export const CODE_CLASS = {
+  '120': ['الکترونیک', 'SMD'],
+  '121': ['الکترونیک', 'مونتاژ و وان قلع (QV/فالت)'],
+  '122': ['الکترونیک', 'تکمیل کاری (ICT برای نودها)'],
+  '123': ['الکترونیک', 'کنترل نهایی'],
+  '130': ['الکترونیک', 'محصول کامل (بسته‌بندی)'],
+  '221': ['پلیمر', 'چاپ و لیزر دایال'],
+  '222': ['پلیمر', 'تزریق و کنترل نهایی دایال'],
+  '225': ['پلیمر', 'قطعات نیمه‌ساخته'],
+  '232': ['پلیمر', 'تزریق قطعات'],
+  '233': ['پلیمر', 'تزریق سنگین'],
+  '320': ['EMS', 'مونتاژ و تست'],
+  '331': ['EMS', 'مجموعه‌سازی ECU/مدولاتور/پدال'],
+  '332': ['EMS', 'مجموعه‌سازی سنسور/آنتن/سایر']
+};
+
+export const CATEGORY_BY_FIRST_DIGIT = {
+  '1': 'الکترونیک',
+  '2': 'پلیمر',
+  '3': 'EMS'
+};
+
+/** دسته و زیرگروه هر محصول را از روی پیشوند کد کالا پر می‌کند */
+export function computeProductClass(db) {
+  const rows = db.prepare('SELECT product_code FROM dim_product').all();
+  const upd = db.prepare('UPDATE dim_product SET category = ?, stage = ? WHERE product_code = ?');
+  let n = 0;
+  for (const r of rows) {
+    const code = String(r.product_code || '');
+    const prefix = code.slice(0, 3);
+    const cls = CODE_CLASS[prefix];
+    const category = cls ? cls[0] : (CATEGORY_BY_FIRST_DIGIT[code.slice(0, 1)] || 'سایر');
+    const stage = cls ? cls[1] : (CATEGORY_BY_FIRST_DIGIT[code.slice(0, 1)] || 'سایر');
+    upd.run(category, stage, code);
+    n += 1;
+  }
+  return n;
+}
 
 export function computeProductUnified(db) {
   db.exec(`
@@ -1107,6 +1158,7 @@ export async function runImport({ files = null, removeMissing = false } = {}) {
 
   dedupeAcrossFiles(db);
   rebuildDims(db);
+  computeProductClass(db);
   computeProductUnified(db);
   markInspectionDuplicates(db);
   rebuildOrders(db);

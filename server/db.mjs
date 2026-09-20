@@ -64,6 +64,8 @@ function migrate(db) {
   add('import_file', 'source_kind', 'TEXT');
   add('dim_product', 'unified_name', 'TEXT');
   add('dim_product', 'is_final', 'INTEGER DEFAULT 0');
+  add('dim_product', 'category', 'TEXT');   // الکترونیک | پلیمر | EMS
+  add('dim_product', 'stage', 'TEXT');      // زیرگروه/مرحله بر اساس پیشوند کد
 }
 
 export function getDb() {

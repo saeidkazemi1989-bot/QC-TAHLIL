@@ -28,6 +28,8 @@ const combos = [
   { product_code: '1211963' },
   { final_group: 'Cluster Instrument' },
   { process_domain: 'SMD' },
+  { category: 'پلیمر' },
+  { stage: 'تزریق و کنترل نهایی دایال', category: 'پلیمر' },
   { q: 'قلع' },
   { from: '1405/05/01', to: '1405/05/31', branch: 'ELE', station: 'سامسونگ 1', cause_6m: 'تجهیرات و ماشین آلات', defect_group: 'لحیم‌کاری و قطعه‌گذاری' }
 ];
@@ -55,7 +57,7 @@ for (const source of ['inprocess', 'inspection', 'polymer']) {
     for (const dim of ['station', 'process_domain', 'branch', 'final_group', 'product_family', 'product_combined',
                        'product', 'defect', 'defect_group', 'cause_6m', 'part_family', 'part_name', 'supplier',
                        'repair_action', 'repair_desc', 'failure_mode', 'process_name', 'registrar', 'operator',
-                       'shift', 'operation', 'product_unified']) {
+                       'shift', 'operation', 'product_unified', 'category', 'stage']) {
       calls.push([`bd:${dim}`, () => A.breakdown(f, source, dim, 10)]);
     }
     for (const [name, fn] of calls) {
