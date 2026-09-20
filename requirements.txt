@@ -1,0 +1,2 @@
+# Excel workbook input/output used by the report converter.
+openpyxl>=3.1,<4
