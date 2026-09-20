@@ -22,7 +22,7 @@ export function parseFilters(q = {}) {
   const f = {
     from: (q.from || '').trim() || null,
     to: (q.to || '').trim() || null,
-    source: ['inprocess', 'inspection'].includes(q.source) ? q.source : 'inprocess',
+    source: ['inprocess', 'inspection', 'polymer'].includes(q.source) ? q.source : 'inprocess',
     q: (q.q || '').trim() || null
   };
   for (const key of LIST_FILTERS) f[key] = parseList(q[key]);
@@ -76,6 +76,11 @@ const SOURCE_COLUMNS = {
     'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'shift', 'operation', 'report', 'repair_desc'
+  ]),
+  polymer: new Set([
+    'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
+    'station', 'process_domain', 'defect_code', 'defect_group',
+    'report', 'repair_desc', 'shift'
   ])
 };
 
@@ -105,13 +110,20 @@ export function defectWhere(f, alias = 'd') {
     listClause(alias, key, f[key], where, params, col);
   }
   if (f.source === 'inspection') where.push(`COALESCE(${alias}.op_seq, 1) = 1`);
+  // منبع پلیمر: فقط ردیف‌هایِ گزارش پلیمر (که در جدول اسناد بازرسی ذخیره می‌شوند)
+  if (f.source === 'polymer') {
+    where.push(`COALESCE(${alias}.report, '') = @report_scope`);
+    params.report_scope = 'پلیمر';
+    where.push(`COALESCE(${alias}.op_seq, 1) = 1`);
+  }
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 }
 
 /** شرط‌های قابل اعمال بر نمای سفارش‌ها (v_order) */
 export const SOURCE_REPORTS = {
   inprocess: ['بازرسی چشمی (QV)', 'SMD', 'ICT', 'کنترل نهایی ELE'],
-  inspection: ['تست نهایی ELE', 'تست نهایی EMS', 'کنترل نهایی EMS']
+  inspection: ['تست نهایی ELE', 'تست نهایی EMS', 'کنترل نهایی EMS'],
+  polymer: ['پلیمر']
 };
 
 export function orderWhere(f, alias = 'o') {

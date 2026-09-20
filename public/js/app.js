@@ -176,6 +176,7 @@ function buildFilterBar() {
         <div class="seg" id="src-seg">
           <button data-src="inprocess" class="${source === 'inprocess' ? 'active' : ''}">عیوب حین تولید</button>
           <button data-src="inspection" class="${source === 'inspection' ? 'active' : ''}">اسناد بازرسی</button>
+          <button data-src="polymer" class="${source === 'polymer' ? 'active' : ''}">پلیمر</button>
         </div>
         <span class="hint">نسخه تک‌فایل: داده‌ها برای کل بازه محاسبه شده‌اند و فیلتر تاریخ/محصول در آن غیرفعال است.
         برای فیلترگذاری کامل، <b>start.bat</b> را اجرا کنید.</span>
@@ -196,6 +197,7 @@ function buildFilterBar() {
       <div class="seg" id="src-seg">
         <button data-src="inprocess" class="${source === 'inprocess' ? 'active' : ''}">عیوب حین تولید</button>
         <button data-src="inspection" class="${source === 'inspection' ? 'active' : ''}">اسناد بازرسی</button>
+        <button data-src="polymer" class="${source === 'polymer' ? 'active' : ''}">پلیمر</button>
       </div>
       <div class="date-fields">
         <label>از تاریخ<input class="input date-input" id="f-from" value="${state.filters.from || ''}" placeholder="1405/05/01" /></label>

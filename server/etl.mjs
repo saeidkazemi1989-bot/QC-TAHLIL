@@ -33,6 +33,7 @@ function normalizeText(v) {
 }
 
 function toNum(v) {
+  v = unwrapCell(v);
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (v instanceof Date) return null;
@@ -628,7 +629,8 @@ export const CLEAN_SHEETS = {
   'qc ele':    { source: 'inprocess',  label: 'کنترل نهایی ELE' },
   fultele:     { source: 'inspection', label: 'تست نهایی ELE' },
   'fult ems':  { source: 'inspection', label: 'تست نهایی EMS' },
-  'qc ems':    { source: 'inspection', label: 'کنترل نهایی EMS' }
+  'qc ems':    { source: 'inspection', label: 'کنترل نهایی EMS' },
+  'پلیمر':     { source: 'polymer',    label: 'پلیمر' }
 };
 
 /** فهرست شیت‌های هر منبع (برای مخرج PPM) */
@@ -638,9 +640,20 @@ export const SOURCE_REPORTS = Object.entries(CLEAN_SHEETS).reduce((acc, [sheet, 
   return acc;
 }, {});
 
+/** سلول‌های فرمول‌دار اکسل (مثل VLOOKUP) را به مقدار واقعی تبدیل می‌کند */
+function unwrapCell(v) {
+  if (v && typeof v === 'object' && !Array.isArray(v) && ('result' in v || 'formula' in v || 'error' in v)) {
+    const r = v.result;
+    if (r === undefined || r === null) return null;                 // خطا یا خالی
+    if (typeof r === 'object') return r.error ? null : (r.text ?? null);
+    return r;
+  }
+  return v;
+}
+
 /** مقادیر تهی در گزارش تمیز: «-» و «#N/A» */
 function cleanVal(v) {
-  const s = toStr(v);
+  const s = toStr(unwrapCell(v));
   if (!s) return null;
   if (s === '-' || s === '—' || s === '#N/A' || s === '.' || s === '#N/A#N/A') return null;
   return s;
@@ -851,7 +864,7 @@ export async function importClean(db, filePath, fileName) {
         const combined = cleanVal(get(row, 'combined'));
         const finalGroup = cleanVal(get(row, 'final'));
         const branch = cleanVal(get(row, 'branch'));
-        upsertProduct(db, code, name, family, combined, finalGroup, branch);
+        upsertProduct(db, code, name || cleanVal(get(row, 'rawName')), family, combined, finalGroup, branch);
 
         // کلید یکتا برای جلوگیری از شمارش دوباره ردیف‌های مشترک بین گزارش‌ها
         const sig = sigOf({
@@ -943,6 +956,39 @@ export async function importClean(db, filePath, fileName) {
  * (که در منبع هم تکرارند) دست‌نخورده می‌مانند. این کار مستقل از ترتیب بارگذاری
  * و تکرارپذیر است.
  */
+/**
+ * یکپارچه‌سازی نام محصول.
+ * هر محصول در سیستم چند کد دارد (هر کد = یک مرحله تولید: 120=SMD،
+ * 121=مونتاژ/وان قلع، 122=تکمیل کاری، 123=کنترل نهایی، 130=بسته‌بندی،
+ * 32x/33x=EMS). برای اینکه در گزارش نام یک محصول تکرار نشود، همه کدهای
+ * یک محصول زیر یک «نام یکپارچه» جمع می‌شوند و کدِ آخرین مرحله به عنوان
+ * مرحله نهایی علامت می‌خورد تا مخرج تولید دوبار شمرده نشود.
+ */
+export const STAGE_ORDER = ['120', '121', '122', '123', '130', '320', '331', '332'];
+
+export function computeProductUnified(db) {
+  db.exec(`
+    UPDATE dim_product SET unified_name =
+      COALESCE(NULLIF(TRIM(COALESCE(product_combined, '')), ''),
+               NULLIF(TRIM(COALESCE(product_name, '')), ''),
+               product_code);
+  `);
+  db.exec('UPDATE dim_product SET is_final = 0');
+  const rows = db.prepare('SELECT product_code, unified_name FROM dim_product').all();
+  const byUnified = new Map();
+  for (const r of rows) {
+    const prefix = String(r.product_code || '').slice(0, 3);
+    const rank = STAGE_ORDER.indexOf(prefix);
+    const current = byUnified.get(r.unified_name);
+    if (!current || (rank >= 0 && (current.rank < 0 || rank > current.rank))) {
+      byUnified.set(r.unified_name, { rank, code: r.product_code });
+    }
+  }
+  const upd = db.prepare('UPDATE dim_product SET is_final = 1 WHERE product_code = ?');
+  for (const { code } of byUnified.values()) upd.run(code);
+  return byUnified.size;
+}
+
 export function dedupeAcrossFiles(db) {
   let removed = 0;
   const groups = [
@@ -1061,6 +1107,7 @@ export async function runImport({ files = null, removeMissing = false } = {}) {
 
   dedupeAcrossFiles(db);
   rebuildDims(db);
+  computeProductUnified(db);
   markInspectionDuplicates(db);
   rebuildOrders(db);
   ensureCalendar(db);

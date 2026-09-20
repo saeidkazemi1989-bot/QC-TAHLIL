@@ -42,7 +42,7 @@ const data = {};
 const put = (url, value) => { data[normalizeKey(url)] = value; };
 
 // ---------------------------------------------------------------- داده‌ها
-const sources = ['inprocess', 'inspection'];
+const sources = ['inprocess', 'inspection', 'polymer'];
 const grains = ['day', 'week', 'month', 'quarter', 'half', 'year'];
 const dims = Object.keys(DIMENSIONS);
 

@@ -33,7 +33,7 @@ const combos = [
 ];
 
 let pass = 0; const fails = [];
-for (const source of ['inprocess', 'inspection']) {
+for (const source of ['inprocess', 'inspection', 'polymer']) {
   for (const combo of combos) {
     const f = parseFilters({ source, ...combo });
     const label = `${source} ${JSON.stringify(combo)}`;
@@ -55,7 +55,7 @@ for (const source of ['inprocess', 'inspection']) {
     for (const dim of ['station', 'process_domain', 'branch', 'final_group', 'product_family', 'product_combined',
                        'product', 'defect', 'defect_group', 'cause_6m', 'part_family', 'part_name', 'supplier',
                        'repair_action', 'repair_desc', 'failure_mode', 'process_name', 'registrar', 'operator',
-                       'shift', 'operation']) {
+                       'shift', 'operation', 'product_unified']) {
       calls.push([`bd:${dim}`, () => A.breakdown(f, source, dim, 10)]);
     }
     for (const [name, fn] of calls) {

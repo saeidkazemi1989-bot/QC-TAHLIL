@@ -10,7 +10,7 @@
 import { getDb } from './db.mjs';
 import { defectWhere, orderWhere, productionWhere, previousPeriod, mergeWhere } from './filters.mjs';
 
-const VIEW_BY_SOURCE = { inprocess: 'v_inprocess', inspection: 'v_inspection' };
+const VIEW_BY_SOURCE = { inprocess: 'v_inprocess', inspection: 'v_inspection', polymer: 'v_inspection' };
 
 export function viewFor(source) {
   return VIEW_BY_SOURCE[source] || 'v_inprocess';
@@ -18,28 +18,34 @@ export function viewFor(source) {
 
 // ---------------------------------------------------------------- ابعاد
 export const DIMENSIONS = {
-  station:         { label: 'ایستگاه',            key: "COALESCE(d.station,'نامشخص')",              label2: null, sources: ['inprocess', 'inspection'], orderLevel: true },
-  process_domain:  { label: 'حوزه فرآیندی',       key: "COALESCE(d.process_domain,'سایر')",         sources: ['inprocess', 'inspection'], orderLevel: true },
-  branch:          { label: 'برنچ',               key: "COALESCE(d.branch,'نامشخص')",               sources: ['inprocess', 'inspection'], orderLevel: true },
-  final_group:     { label: 'گروه محصول نهایی',   key: "COALESCE(d.final_group,'نامشخص')",          sources: ['inprocess', 'inspection'], orderLevel: true },
-  product_family:  { label: 'خانواده محصول',      key: "COALESCE(d.product_family,'نامشخص')",       sources: ['inprocess', 'inspection'], orderLevel: true },
-  product_combined:{ label: 'نام محصول ترکیبی',   key: "COALESCE(d.product_combined,'نامشخص')",     sources: ['inprocess', 'inspection'], orderLevel: true },
-  product:         { label: 'محصول',              key: "COALESCE(d.product_code,'نامشخص')",         label2: "COALESCE(d.product_name_dim, d.product_code)", sources: ['inprocess', 'inspection'], orderLevel: true },
-  report:          { label: 'گزارش مبدا',         key: "COALESCE(d.report,'نامشخص')",               sources: ['inprocess', 'inspection'] },
-  defect:          { label: 'کد عیب',             key: "COALESCE(d.defect_code,'نامشخص')",          label2: "COALESCE(d.defect_desc, d.defect_code)", sources: ['inprocess', 'inspection'] },
-  defect_group:    { label: 'دسته عیب',           key: "COALESCE(d.defect_group,'سایر')",           sources: ['inprocess', 'inspection'] },
-  cause_6m:        { label: 'عامل مسبب (6M)',     key: "COALESCE(d.cause_6m,'ثبت نشده')",           sources: ['inprocess', 'inspection'] },
-  part_family:     { label: 'خانواده قطعات',      key: "COALESCE(d.part_family,'ثبت نشده')",        sources: ['inprocess', 'inspection'] },
-  part_name:       { label: 'نام قطعه',           key: "COALESCE(d.part_name,'ثبت نشده')",          sources: ['inprocess', 'inspection'] },
-  supplier:        { label: 'تامین‌کننده',        key: "COALESCE(d.supplier,'ثبت نشده')",          sources: ['inprocess', 'inspection'] },
-  repair_action:   { label: 'اقدام تعمیرات',      key: "COALESCE(d.repair_action,'ثبت نشده')",      sources: ['inprocess', 'inspection'] },
-  repair_desc:     { label: 'توضیحات تعمیرات',    key: "COALESCE(d.repair_desc,'ثبت نشده')",        sources: ['inprocess', 'inspection'] },
-  failure_mode:    { label: 'حالت خرابی بالقوه',  key: "COALESCE(d.failure_mode,'ثبت نشده')",       sources: ['inprocess', 'inspection'] },
-  process_name:    { label: 'نام فرآیند (OPC)',   key: "COALESCE(d.process_name,'ثبت نشده')",       sources: ['inprocess', 'inspection'] },
+  station:         { label: 'ایستگاه',            key: "COALESCE(d.station,'نامشخص')",              label2: null, sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  process_domain:  { label: 'حوزه فرآیندی',       key: "COALESCE(d.process_domain,'سایر')",         sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  branch:          { label: 'برنچ',               key: "COALESCE(d.branch,'نامشخص')",               sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  final_group:     { label: 'گروه محصول نهایی',   key: "COALESCE(d.final_group,'نامشخص')",          sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  product_family:  { label: 'خانواده محصول',      key: "COALESCE(d.product_family,'نامشخص')",       sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  product_combined:{ label: 'نام محصول ترکیبی',   key: "COALESCE(d.product_combined,'نامشخص')",     sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  product:         { label: 'محصول (کد مرحله)',   key: "COALESCE(d.product_code,'نامشخص')",
+    label2: "COALESCE(d.product_name_dim, d.product_code) || CASE substr(COALESCE(d.product_code,''), 1, 3) WHEN '120' THEN ' · SMD' WHEN '121' THEN ' ، مونتاژ/وان قلع' WHEN '122' THEN ' ، تکمیل کاری' WHEN '123' THEN ' ، کنترل نهایی' WHEN '130' THEN ' ، بسته‌بندی' WHEN '320' THEN ' ، مونتاژ EMS' WHEN '331' THEN ' ، کنترل نهایی EMS' WHEN '332' THEN ' ، کنترل نهایی EMS' ELSE '' END",
+    sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
+  product_unified: { label: 'محصول (یکپارچه)',    key: "COALESCE(d.unified_name, d.product_name_dim, d.product_code)",
+    label2: "COALESCE(d.unified_name, d.product_name_dim, d.product_code)",
+    sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true,
+    ordFilter: "AND COALESCE(o.product_code, '') IN (SELECT product_code FROM dim_product WHERE is_final = 1)" },
+  report:          { label: 'گزارش مبدا',         key: "COALESCE(d.report,'نامشخص')",               sources: ['inprocess', 'inspection', 'polymer'] },
+  defect:          { label: 'کد عیب',             key: "COALESCE(d.defect_code,'نامشخص')",          label2: "COALESCE(d.defect_desc, d.defect_code)", sources: ['inprocess', 'inspection', 'polymer'] },
+  defect_group:    { label: 'دسته عیب',           key: "COALESCE(d.defect_group,'سایر')",           sources: ['inprocess', 'inspection', 'polymer'] },
+  cause_6m:        { label: 'عامل مسبب (6M)',     key: "COALESCE(d.cause_6m,'ثبت نشده')",           sources: ['inprocess', 'inspection', 'polymer'] },
+  part_family:     { label: 'خانواده قطعات',      key: "COALESCE(d.part_family,'ثبت نشده')",        sources: ['inprocess', 'inspection', 'polymer'] },
+  part_name:       { label: 'نام قطعه',           key: "COALESCE(d.part_name,'ثبت نشده')",          sources: ['inprocess', 'inspection', 'polymer'] },
+  supplier:        { label: 'تامین‌کننده',        key: "COALESCE(d.supplier,'ثبت نشده')",          sources: ['inprocess', 'inspection', 'polymer'] },
+  repair_action:   { label: 'اقدام تعمیرات',      key: "COALESCE(d.repair_action,'ثبت نشده')",      sources: ['inprocess', 'inspection', 'polymer'] },
+  repair_desc:     { label: 'توضیحات تعمیرات',    key: "COALESCE(d.repair_desc,'ثبت نشده')",        sources: ['inprocess', 'inspection', 'polymer'] },
+  failure_mode:    { label: 'حالت خرابی بالقوه',  key: "COALESCE(d.failure_mode,'ثبت نشده')",       sources: ['inprocess', 'inspection', 'polymer'] },
+  process_name:    { label: 'نام فرآیند (OPC)',   key: "COALESCE(d.process_name,'ثبت نشده')",       sources: ['inprocess', 'inspection', 'polymer'] },
   registrar:       { label: 'ثبت‌کننده اطلاعات',  key: "COALESCE(d.registrar,'ثبت نشده')",          sources: ['inprocess'] },
-  operator:        { label: 'اپراتور مسبب',       key: "COALESCE(d.operator_name,'ثبت نشده')",      sources: ['inprocess', 'inspection'] },
-  shift:           { label: 'شیفت',               key: "COALESCE(d.shift,'ثبت نشده')",              sources: ['inspection'], orderLevel: true },
-  operation:       { label: 'عنوان عملیات آزمایش', key: "COALESCE(d.operation,'ثبت نشده')",         sources: ['inspection'] }
+  operator:        { label: 'اپراتور مسبب',       key: "COALESCE(d.operator_name,'ثبت نشده')",      sources: ['inprocess', 'inspection', 'polymer'] },
+  shift:           { label: 'شیفت',               key: "COALESCE(d.shift,'ثبت نشده')",              sources: ['inspection', 'polymer'], orderLevel: true },
+  operation:       { label: 'عنوان عملیات آزمایش', key: "COALESCE(d.operation,'ثبت نشده')",         sources: ['inspection', 'polymer'] }
 };
 
 
@@ -47,40 +53,40 @@ export const DIMENSIONS = {
 // keyOrder -> برای نمای سفارش‌ها (نام مستعار o) و جدول تقویم (dd)
 export const DATE_GROUPS = {
   day: {
-    key: "COALESCE(d.order_date,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyOrder: "COALESCE(o.order_date,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyProd: "COALESCE(p.production_date,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    label: "COALESCE(d.order_date,'\u0646\u0627\u0645\u0634\u062e\u0635')"
+    key: "COALESCE(d.order_date,'نامشخص')",
+    keyOrder: "COALESCE(o.order_date,'نامشخص')",
+    keyProd: "COALESCE(p.production_date,'نامشخص')",
+    label: "COALESCE(d.order_date,'نامشخص')"
   },
   week: {
-    key: "COALESCE(d.jweek_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyOrder: "COALESCE(dd.jweek_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyProd: "COALESCE(d.jweek_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    label: "COALESCE(d.jweek_label,'\u0646\u0627\u0645\u0634\u062e\u0635')"
+    key: "COALESCE(d.jweek_label,'نامشخص')",
+    keyOrder: "COALESCE(dd.jweek_label,'نامشخص')",
+    keyProd: "COALESCE(d.jweek_label,'نامشخص')",
+    label: "COALESCE(d.jweek_label,'نامشخص')"
   },
   month: {
-    key: "COALESCE(d.jmonth_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyOrder: "COALESCE(dd.jmonth_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyProd: "COALESCE(d.jmonth_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    label: "COALESCE(d.jmonth_name_label,'\u0646\u0627\u0645\u0634\u062e\u0635')"
+    key: "COALESCE(d.jmonth_label,'نامشخص')",
+    keyOrder: "COALESCE(dd.jmonth_label,'نامشخص')",
+    keyProd: "COALESCE(d.jmonth_label,'نامشخص')",
+    label: "COALESCE(d.jmonth_name_label,'نامشخص')"
   },
   quarter: {
-    key: "COALESCE(d.jquarter_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyOrder: "COALESCE(dd.jquarter_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyProd: "COALESCE(d.jquarter_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    label: "COALESCE(d.jquarter_name,'\u0646\u0627\u0645\u0634\u062e\u0635')"
+    key: "COALESCE(d.jquarter_label,'نامشخص')",
+    keyOrder: "COALESCE(dd.jquarter_label,'نامشخص')",
+    keyProd: "COALESCE(d.jquarter_label,'نامشخص')",
+    label: "COALESCE(d.jquarter_name,'نامشخص')"
   },
   half: {
-    key: "COALESCE(d.jhalf_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyOrder: "COALESCE(dd.jhalf_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyProd: "COALESCE(d.jhalf_label,'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    label: "COALESCE(d.jhalf_name,'\u0646\u0627\u0645\u0634\u062e\u0635')"
+    key: "COALESCE(d.jhalf_label,'نامشخص')",
+    keyOrder: "COALESCE(dd.jhalf_label,'نامشخص')",
+    keyProd: "COALESCE(d.jhalf_label,'نامشخص')",
+    label: "COALESCE(d.jhalf_name,'نامشخص')"
   },
   year: {
-    key: "COALESCE(CAST(d.jyear AS TEXT),'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyOrder: "COALESCE(CAST(dd.jyear AS TEXT),'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    keyProd: "COALESCE(CAST(d.jyear AS TEXT),'\u0646\u0627\u0645\u0634\u062e\u0635')",
-    label: "COALESCE(CAST(d.jyear AS TEXT),'\u0646\u0627\u0645\u0634\u062e\u0635')"
+    key: "COALESCE(CAST(d.jyear AS TEXT),'نامشخص')",
+    keyOrder: "COALESCE(CAST(dd.jyear AS TEXT),'نامشخص')",
+    keyProd: "COALESCE(CAST(d.jyear AS TEXT),'نامشخص')",
+    label: "COALESCE(CAST(d.jyear AS TEXT),'نامشخص')"
   }
 };
 
@@ -260,7 +266,7 @@ export function breakdown(f, source = 'inprocess', dim = 'station', limit = 25) 
       ),
       ord AS (
         SELECT ${dkeyOrder} AS gkey, MAX(${dlabelOrder}) AS glabel, COALESCE(SUM(o.sound_qty),0) AS production
-        FROM v_order o ${ow.sql}
+        FROM v_order o ${ow.sql} ${d.ordFilter || ''}
         GROUP BY gkey
       ),
       keys AS (SELECT gkey FROM def UNION SELECT gkey FROM ord)
@@ -360,6 +366,17 @@ const RECORD_COLUMNS = {
     rpn: 'RPN',
     registrar: 'ثبت‌کننده',
     operator_name: 'اپراتور'
+  },
+  polymer: {
+    order_date: 'تاریخ',
+    product_name_dim: 'محصول',
+    station: 'ایستگاه',
+    shift: 'شیفت',
+    defect_code: 'کد ایراد',
+    defect_desc: 'شرح ایراد',
+    defect_qty: 'تعداد عیب',
+    repair_action: 'اقدام تعمیرات',
+    repair_desc: 'توضیحات تعمیرات'
   },
   inspection: {
     order_date: 'تاریخ',

@@ -62,6 +62,8 @@ function migrate(db) {
   add('fact_production', 'station', 'TEXT');
   add('fact_order', 'report', 'TEXT');
   add('import_file', 'source_kind', 'TEXT');
+  add('dim_product', 'unified_name', 'TEXT');
+  add('dim_product', 'is_final', 'INTEGER DEFAULT 0');
 }
 
 export function getDb() {

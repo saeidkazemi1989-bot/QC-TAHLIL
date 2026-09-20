@@ -7,7 +7,11 @@ import {
 } from './ui.js';
 import { GLOSSARY } from './glossary.js';
 
-const DEFECT_LABEL = { inprocess: 'تعداد عیوب', inspection: 'تعداد واحد معیوب' };
+const DEFECT_LABEL = {
+  inprocess: 'تعداد عیوب',
+  inspection: 'تعداد واحد معیوب',
+  polymer: 'تعداد عیوب پلیمر'
+};
 
 function defectWord() {
   return DEFECT_LABEL[state.source] || DEFECT_LABEL.inprocess;
@@ -26,9 +30,9 @@ function rerender(page, root) {
 }
 
 function sourceNote() {
-  return state.source === 'inprocess'
-    ? 'منبع: گزارش کیفیت حین تولید (ریز عیوب ثبت‌شده در ایستگاه‌ها)'
-    : 'منبع: اسناد بازرسی (تعداد دستگاه معیوب؛ ردیف‌های تکراری عملیات حذف شده است)';
+  if (state.source === 'inprocess') return 'منبع: گزارش کیفیت حین تولید (ریز عیوب ثبت‌شده در ایستگاه‌ها)';
+  if (state.source === 'polymer') return 'منبع: گزارش پلیمر (کالاهای ۱۳۰* در ایستگاه بسته‌بندی؛ تولید از مرکز کاری بسته‌بندی)';
+  return 'منبع: اسناد بازرسی (تعداد دستگاه معیوب؛ ردیف‌های تکراری عملیات حذف شده است)';
 }
 
 function grid(cols, content, className = '') {
@@ -52,7 +56,7 @@ export const home = {
       get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 12 }),
       get('/api/breakdown', { dim: 'station', limit: 10 }),
-      get('/api/breakdown', { dim: 'product', limit: 10 }),
+      get('/api/breakdown', { dim: 'product_unified', limit: 10 }),
       get('/api/breakdown', { dim: state.source === 'inprocess' ? 'cause_6m' : 'shift', limit: 8 })
     ]);
 
@@ -106,6 +110,7 @@ export const home = {
       `)}
     `;
 
+    wireSeg(root, 'home-period', (g) => { state.trendGroup = g; rerender(home, root); });
     trendCombo(root.querySelector('#home-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0 });
     if (defectBd.length) pareto(root.querySelector('#home-pareto'), defectBd, { valueName: defectWord() });
     else root.querySelector('#home-pareto').innerHTML = emptyCard();
@@ -127,7 +132,7 @@ export const management = {
       get('/api/summary'),
       get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'branch', limit: 6 }),
-      get('/api/breakdown', { dim: 'product', limit: 40 }),
+      get('/api/breakdown', { dim: 'product_unified', limit: 40 }),
       get('/api/breakdown', { dim: 'final_group', limit: 8 }),
       get('/api/breakdown', { dim: 'defect_group', limit: 8 }),
       get('/api/breakdown', { dim: 'station', limit: 12 }),
@@ -211,6 +216,7 @@ export const management = {
       `)}
     `;
 
+    wireSeg(root, 'mg-period', (g) => { state.trendGroup = g; rerender(management, root); });
     trendCombo(root.querySelector('#mg-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0 });
     if (branchBd.length) barH(root.querySelector('#mg-branch'), branchBd, { valueName: defectWord() });
     if (defectBd.length) donut(root.querySelector('#mg-defectgroup'), defectBd, { valueName: defectWord() });
@@ -909,9 +915,13 @@ export const guide = {
               <ul>
                 <li><b>بازرسی چشمی (QV)، SMD، ICT، کنترل نهایی ELE</b> — عیوب حین تولید.</li>
                 <li><b>تست نهایی ELE، تست نهایی EMS، کنترل نهایی EMS</b> — عیوب اسناد بازرسی.</li>
+                <li><b>پلیمر</b> — کالاهای ۱۳۰* که فقط در ایستگاه «بسته‌بندی» ثبت می‌شوند.</li>
               </ul>
               <p>در هر بخش، ردیف‌های عیب و ردیف‌های تولید کنار هم هستند؛ به همین دلیل مخرجِ PPM هر بخش
               دقیقاً از همان مراکز کاریِ خودش گرفته می‌شود.</p>
+              <p><b>نام محصول:</b> هر محصول چند کد دارد (هر کد یک مرحله تولید). جلوی نام محصول، مرحله آن
+              نوشته می‌شود (مثلاً «BCMI 207 ، کنترل نهایی»). برای دیدن یکپارچه، نمودار «محصولات پرعیب»
+              همه مراحل یک محصول را جمع می‌زند و تولید را فقط از مرحله آخر می‌گیرد تا PPM درست بماند.</p>
             </div>`
         })}
         ${cardShell({
