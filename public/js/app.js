@@ -154,6 +154,8 @@ const FILTER_DEFS = [
   { key: 'repair_action', label: 'اقدام تعمیرات', options: () => state.meta.repair_actions, only: ['inprocess'] },
   { key: 'part_family', label: 'خانواده قطعات', options: () => state.meta.part_families, only: ['inprocess'] },
   { key: 'supplier', label: 'تامین‌کننده', options: () => state.meta.suppliers, only: ['inprocess'] },
+  { key: 'report', label: 'گزارش مبدا', options: () => state.meta.reports },
+  { key: 'repair_desc', label: 'توضیحات تعمیرات', options: () => state.meta.repair_descs, searchable: true },
   { key: 'shift', label: 'شیفت', options: () => state.meta.shifts, only: ['inspection'] },
   { key: 'operation', label: 'عملیات آزمایش', options: () => state.meta.operations, only: ['inspection'] }
 ];

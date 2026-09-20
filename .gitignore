@@ -4,3 +4,5 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 .DS_Store
+__pycache__/
+*.pyc

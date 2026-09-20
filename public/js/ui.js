@@ -110,6 +110,25 @@ function cellHeat(v) {
 }
 
 /** ساخت المنت کارت از رشته‌ی HTML */
+/** انتخابگر دوره زمانی (پیش‌فرض ماهانه؛ روزانه نیز در دسترس است) */
+export const PERIOD_LABELS = {
+  day: 'روزانه', week: 'هفتگی', month: 'ماهانه',
+  quarter: 'فصلی', half: 'نیم‌سالانه', year: 'سالانه'
+};
+
+export function periodSeg({ id = 'period-seg', current = 'month', options = ['day', 'week', 'month', 'quarter'] } = {}) {
+  return `<div class="seg" id="${id}">${options
+    .map((o) => `<button type="button" data-g="${o}" class="${o === current ? 'active' : ''}">${PERIOD_LABELS[o] || o}</button>`)
+    .join('')}</div>`;
+}
+
+/** اتصال دکمه‌های انتخابگر به یک تابع */
+export function wireSeg(root, id, cb) {
+  root.querySelectorAll(`#${id} button`).forEach((b) => {
+    b.addEventListener('click', () => cb(b.dataset.g, b));
+  });
+}
+
 export function node(html) {
   return el(html);
 }

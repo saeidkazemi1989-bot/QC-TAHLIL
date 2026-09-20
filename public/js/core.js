@@ -62,7 +62,8 @@ export const state = {
   user: JSON.parse(safeStorage.getItem('qc_user') || 'null'),
   meta: null,
   filters: {},
-  source: 'inprocess'
+  source: 'inprocess',
+  trendGroup: 'month'          // پیش‌فرض نمودارهای روند: ماهانه
 };
 
 export function saveSession(token, user) {

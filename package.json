@@ -8,7 +8,9 @@
     "import": "node server/etl.mjs",
     "reset": "rm -f data/qc.db* && node server/etl.mjs",
     "test": "node server/selftest.mjs",
-    "export": "node server/export-static.mjs"
+    "export": "node server/export-static.mjs",
+    "clean": "node server/clean.mjs",
+    "refresh": "npm run clean && npm run import"
   },
   "repository": {
     "type": "git",

@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import ExcelJS from 'exceljs';
-import { getDb, ready as dbReady, ensureDate, buildCalendar, RAW_DIR } from './db.mjs';
+import { getDb, ready as dbReady, ensureDate, buildCalendar, RAW_DIR, CLEAN_DIR } from './db.mjs';
 import { parseJalali, toEn, gregorianToJalali, formatJalali } from './jalali.mjs';
 
 const log = (...a) => console.log('[ETL]', ...a);
@@ -553,6 +553,22 @@ function rebuildOrders(db) {
       sources      = CASE WHEN instr(COALESCE(fact_order.sources,''), 'inspection') > 0
                           THEN fact_order.sources ELSE COALESCE(fact_order.sources,'') || ',inspection' END;
   `);
+  // رکوردهای تولید (در داده‌های تمیز، شماره سفارش وجود ندارد؛
+  // هر ردیف تولیدِ یک روز/محصول/گزارش به عنوان یک رکورد تولید شمرده می‌شود)
+  db.exec(`
+    INSERT INTO fact_order (order_no, order_date, product_code, station, planned_qty, sound_qty, scrap_qty, sources, report)
+    SELECT 'P|' || COALESCE(production_date,'') || '|' || COALESCE(product_code,'') || '|' || COALESCE(work_center,''),
+           production_date, product_code, MAX(station), 0,
+           SUM(COALESCE(sound_qty,0)), SUM(COALESCE(scrap_qty,0)), 'production', MAX(report)
+    FROM fact_production
+    WHERE production_date IS NOT NULL
+    GROUP BY production_date, product_code, work_center
+    ON CONFLICT(order_no) DO UPDATE SET
+      sound_qty = excluded.sound_qty,
+      scrap_qty = excluded.scrap_qty,
+      sources   = CASE WHEN instr(COALESCE(fact_order.sources,''), 'production') > 0
+                       THEN fact_order.sources ELSE COALESCE(fact_order.sources,'') || ',production' END
+  `);
   // مرتب‌سازی: سفارش‌های فقط-بازرسی که تاریخ ندارند
   db.exec(`UPDATE fact_order SET sources = ltrim(COALESCE(sources,''), ',')`);
 }
@@ -597,40 +613,360 @@ function ensureCalendar(db) {
   buildCalendar([...list].sort());
 }
 
+
+// ---------------------------------------------------------------- گزارش تمیز راهکاران
+/**
+ * خروجی ابزار تبدیل (qc.py) یک فایل با ۷ شیت داده است.
+ * هر شیت مربوط به یک گزارش کیفیت است و شامل ردیف‌های عیب و ردیف‌های تولید:
+ *   - ردیف عیب:    تعداد ایراد > 0 و تعداد کل = 0
+ *   - ردیف تولید:  تعداد ایراد = 0 و تعداد کل = مقدار سالم
+ */
+export const CLEAN_SHEETS = {
+  qv:          { source: 'inprocess',  label: 'بازرسی چشمی (QV)' },
+  'smd report': { source: 'inprocess', label: 'SMD' },
+  ict:         { source: 'inprocess',  label: 'ICT' },
+  'qc ele':    { source: 'inprocess',  label: 'کنترل نهایی ELE' },
+  fultele:     { source: 'inspection', label: 'تست نهایی ELE' },
+  'fult ems':  { source: 'inspection', label: 'تست نهایی EMS' },
+  'qc ems':    { source: 'inspection', label: 'کنترل نهایی EMS' }
+};
+
+/** فهرست شیت‌های هر منبع (برای مخرج PPM) */
+export const SOURCE_REPORTS = Object.entries(CLEAN_SHEETS).reduce((acc, [sheet, info]) => {
+  acc[info.source] = acc[info.source] || [];
+  acc[info.source].push(info.label);
+  return acc;
+}, {});
+
+/** مقادیر تهی در گزارش تمیز: «-» و «#N/A» */
+function cleanVal(v) {
+  const s = toStr(v);
+  if (!s) return null;
+  if (s === '-' || s === '—' || s === '#N/A' || s === '.' || s === '#N/A#N/A') return null;
+  return s;
+}
+
+function cleanNum(v) {
+  const s = cleanVal(v);
+  if (s === null) return null;
+  return toNum(s);
+}
+
+/** عددی که صفرِ آن به معنای «ثبت نشده» است (شدت/تشخیص/وقوع و زمان‌ها) */
+function cleanNumNz(v) {
+  const n = cleanNum(v);
+  return (n === null || n === 0) ? null : n;
+}
+
+/** خواندن همه شیت‌های یک فایل اکسل */
+async function readWorkbook(filePath) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(filePath);
+  const sheets = [];
+  for (const ws of wb.worksheets) {
+    const rows = [];
+    ws.eachRow({ includeEmpty: false }, (row, n) => rows.push({ n, values: row.values }));
+    if (!rows.length) continue;
+    const headers = rows[0].values.slice(1).map(normalizeText);
+    const idx = new Map();
+    headers.forEach((h, i) => { if (h && !idx.has(h)) idx.set(h, i); });
+    sheets.push({
+      name: ws.name,
+      headers,
+      idx,
+      rows: rows.slice(1).map((r) => ({ n: r.n, values: r.values.slice(1) }))
+    });
+  }
+  return sheets;
+}
+
+/** تشخیص فایل خروجی ابزار تبدیل */
+export function isCleanReport(sheets) {
+  const names = sheets.map((s) => normalizeText(s.name).toLowerCase());
+  const known = names.filter((n) => CLEAN_SHEETS[n]).length;
+  if (known >= 1) return true;
+  const sheetsWithCols = sheets.filter((s) => s.idx.has('تعداد ایراد') && s.idx.has('تعداد کل') && s.idx.has('کد گروه محصول'));
+  return sheetsWithCols.length >= 2;
+}
+
+const CC = {
+  date: ['تاریخ'],
+  shift: ['شیفت کاری'],
+  code: ['کد گروه محصول'],
+  rawName: ['کد محصول'],
+  name: ['نام محصول'],
+  family: ['خانواده محصول'],
+  combined: ['نام محصول ترکیبی'],
+  final: ['گروه محصول نهایی'],
+  branch: ['برنچ'],
+  station: ['ایستگاه'],
+  dcode: ['کد ایراد'],
+  ddesc: ['شرح ایراد'],
+  dqty: ['تعداد ایراد'],
+  tot: ['تعداد کل'],
+  action: ['شرح فعالیت انجام شده توسط تعمیرات'],
+  six: ['عامل مسبب ایراد 6M'],
+  pcode: ['کد قطعه'],
+  pname: ['نام قطعه'],
+  pfamily: ['خانواده قطعات'],
+  psup: ['نام تامین کننده'],
+  fm: ['حالت خرابی بالقوه'],
+  fmtype: ['نوع حالت خرابی بالقوه'],
+  sev: ['شدت حالت خرابی'],
+  det: ['تشخیص حالت خرابی'],
+  occ: ['وقوع قدیمی'],
+  tTrou: ['مدت زمان عیب یابی ( دقیقه )', 'مدت زمان عیب یابی(دقیقه)'],
+  tFix: ['مدت زمان رفع عیب ( دقیقه )', 'مدت زمان رفع عیب(دقیقه)'],
+  tTest: ['مدت زمان تست مجدد ( دقیقه )', 'مدت زمان تست مجدد(دقیقه)'],
+  rep: ['توضیحات تعمیرات'],
+  op: ['نام اپراتور'],
+  insp: ['نام بازرس'],
+  tool: ['کد و نام تجهیزات و ابزارآلات'],
+  loc: ['جانمایی قطعه معیوب در فرآیند SMD'],
+  opcCode: ['کد فرآیند (OPC)'],
+  opcName: ['نام فرآیند (OPC)'],
+  notes: ['توضیحات']
+};
+
+function colIdx(idx, key) {
+  for (const n of CC[key] || []) {
+    const i = idx.get(normalizeText(n));
+    if (i !== undefined) return i;
+  }
+  return -1;
+}
+
+/** درج/به‌روزرسانی اطلاعات محصول از خودِ ردیف‌های گزارش */
+function upsertProduct(db, code, name, family, combined, finalGroup, branch) {
+  if (!code) return;
+  db.prepare(`
+    INSERT INTO dim_product (product_code, product_name, product_family, product_combined, final_group, branch)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_code) DO UPDATE SET
+      product_name     = COALESCE(dim_product.product_name, excluded.product_name),
+      product_family   = COALESCE(dim_product.product_family, excluded.product_family),
+      product_combined = COALESCE(dim_product.product_combined, excluded.product_combined),
+      final_group      = COALESCE(dim_product.final_group, excluded.final_group),
+      branch           = CASE WHEN dim_product.branch IS NULL OR dim_product.branch = 'نامشخص'
+                              THEN excluded.branch ELSE dim_product.branch END
+  `).run(code, name, family, combined, finalGroup, branch);
+}
+
+export async function importClean(db, filePath, fileName) {
+  const sheets = await readWorkbook(filePath);
+  if (!isCleanReport(sheets)) throw new Error('ساختار فایل به عنوان «گزارش تمیز» شناخته نشد');
+
+  // حذف داده‌های قبلی همین فایل (بارگذاری تکراری = جایگزینی)
+  db.prepare('DELETE FROM fact_inprocess WHERE src_file = ?').run(fileName);
+  db.prepare('DELETE FROM fact_inspection WHERE src_file = ?').run(fileName);
+  db.prepare('DELETE FROM fact_production WHERE src_file = ?').run(fileName);
+
+  const insIp = db.prepare(`
+    INSERT INTO fact_inprocess
+      (src_file, src_row, report, order_no, order_date, product_code, product_name, station,
+       process_code, process_name, defect_code, defect_desc, defect_qty, sound_qty,
+       cause_6m, failure_mode, failure_mode_type, severity, occurrence, detection, rpn,
+       part_code, part_name, part_family, supplier, tool, location,
+       repair_action, repair_desc, inspector, operator_name, notes,
+       fix_time_min, retest_time_min, troubleshoot_time_min)
+    VALUES (@src_file,@src_row,@report,@order_no,@order_date,@product_code,@product_name,@station,
+       @process_code,@process_name,@defect_code,@defect_desc,@defect_qty,@sound_qty,
+       @cause_6m,@failure_mode,@failure_mode_type,@severity,@occurrence,@detection,@rpn,
+       @part_code,@part_name,@part_family,@supplier,@tool,@location,
+       @repair_action,@repair_desc,@inspector,@operator_name,@notes,
+       @fix_time_min,@retest_time_min,@troubleshoot_time_min)
+  `);
+  const insIns = db.prepare(`
+    INSERT INTO fact_inspection
+      (src_file, src_row, report, order_no, order_date, shift, product_code, product_name,
+       station, operation, defect_code, defect_desc, defect_qty, op_seq,
+       repair_action, repair_desc, cause_6m, failure_mode, failure_mode_type, part_code, part_name, part_family, supplier,
+       severity, occurrence, detection, rpn, fix_time_min, retest_time_min, troubleshoot_time_min,
+       operator_name, inspector, process_code, process_name, notes)
+    VALUES (@src_file,@src_row,@report,@order_no,@order_date,@shift,@product_code,@product_name,
+       @station,@operation,@defect_code,@defect_desc,@defect_qty,1,
+       @repair_action,@repair_desc,@cause_6m,@failure_mode,@failure_mode_type,@part_code,@part_name,@part_family,@supplier,
+       @severity,@occurrence,@detection,@rpn,@fix_time_min,@retest_time_min,@troubleshoot_time_min,
+       @operator_name,@inspector,@process_code,@process_name,@notes)
+  `);
+  const insProd = db.prepare(`
+    INSERT INTO fact_production
+      (src_file, src_row, report, production_date, product_code, product_name, station, work_center, sound_qty, scrap_qty, planned_qty)
+    VALUES (@src_file,@src_row,@report,@production_date,@product_code,@product_name,@station,@work_center,@sound_qty,0,0)
+  `);
+
+  let rowsIn = 0;
+  const loaded = { inprocess: 0, inspection: 0, production: 0 };
+  const skipped = [];
+  const seen = new Map();          // حذف ردیف‌های کاملاً تکراری بین فایل‌ها
+
+  const run = db.transaction(() => {
+    for (const sheet of sheets) {
+      const key = normalizeText(sheet.name).toLowerCase();
+      const info = CLEAN_SHEETS[key];
+      const sheetNo = sheets.indexOf(sheet) + 1;   // شماره شیت برای یکتا بودن شماره ردیف
+      if (!info) continue;                      // شیت گروه‌بندی محصولات و شیت‌های دیگر
+      const c = {};
+      for (const k of Object.keys(CC)) c[k] = colIdx(sheet.idx, k);
+      if (c.date < 0 || c.dqty < 0 || c.tot < 0) { skipped.push(`${sheet.name}: ستون‌های اصلی پیدا نشد`); continue; }
+
+      const get = (row, k) => (c[k] >= 0 ? row.values[c[k]] : undefined);
+
+      for (const row of sheet.rows) {
+        const rawDate = get(row, 'date');
+        const jdate = toJdate(rawDate);
+        const code = cleanVal(get(row, 'code'));
+        if (!jdate || !code) { if (rawDate) rowsIn += 1; continue; }
+        rowsIn += 1;
+
+        const dqty = toNum(get(row, 'dqty')) || 0;
+        const tot = toNum(get(row, 'tot')) || 0;
+        const name = cleanVal(get(row, 'name'));
+        const family = cleanVal(get(row, 'family'));
+        const combined = cleanVal(get(row, 'combined'));
+        const finalGroup = cleanVal(get(row, 'final'));
+        const branch = cleanVal(get(row, 'branch'));
+        upsertProduct(db, code, name, family, combined, finalGroup, branch);
+
+        // کلید یکتا برای جلوگیری از شمارش دوباره ردیف‌های مشترک بین گزارش‌ها
+        const sig = [info.source, sheet.name, jdate, code, cleanVal(get(row, 'station')),
+          cleanVal(get(row, 'dcode')), dqty, tot, cleanVal(get(row, 'pcode')),
+          cleanVal(get(row, 'rep')), cleanVal(get(row, 'six'))].join('|');
+        const n = (seen.get(sig) || 0) + 1;
+        seen.set(sig, n);
+
+        const common = {
+          src_file: fileName,
+          src_row: sheetNo * 1000000 + row.n,
+          report: info.label,
+          order_no: null,
+          order_date: jdate,
+          product_code: code,
+          product_name: cleanVal(get(row, 'rawName')) || name,
+          station: cleanVal(get(row, 'station')),
+          defect_code: cleanVal(get(row, 'dcode')),
+          defect_desc: cleanVal(get(row, 'ddesc')),
+          defect_qty: dqty,
+          repair_action: cleanVal(get(row, 'action')),
+          repair_desc: cleanVal(get(row, 'rep')),
+          cause_6m: cleanVal(get(row, 'six')),
+          failure_mode: cleanVal(get(row, 'fm')),
+          failure_mode_type: cleanVal(get(row, 'fmtype')),
+          severity: cleanNumNz(get(row, 'sev')),
+          occurrence: cleanNumNz(get(row, 'occ')),
+          detection: cleanNumNz(get(row, 'det')),
+          part_code: cleanVal(get(row, 'pcode')),
+          part_name: cleanVal(get(row, 'pname')),
+          part_family: cleanVal(get(row, 'pfamily')),
+          supplier: cleanVal(get(row, 'psup')),
+          fix_time_min: cleanNumNz(get(row, 'tFix')),
+          retest_time_min: cleanNumNz(get(row, 'tTest')),
+          troubleshoot_time_min: cleanNumNz(get(row, 'tTrou')),
+          operator_name: cleanVal(get(row, 'op')),
+          inspector: cleanVal(get(row, 'insp')),
+          process_code: cleanVal(get(row, 'opcCode')),
+          process_name: cleanVal(get(row, 'opcName')),
+          notes: cleanVal(get(row, 'notes'))
+        };
+        const s = common.severity, o = common.occurrence, d = common.detection;
+        const rpn = (s != null && o != null && d != null) ? s * o * d : null;
+
+        if (dqty > 0) {
+          if (info.source === 'inprocess') {
+            insIp.run({ ...common, sound_qty: 0, tool: cleanVal(get(row, 'tool')), location: cleanVal(get(row, 'loc')), rpn });
+            loaded.inprocess += 1;
+          } else {
+            insIns.run({ ...common, operation: null, rpn });
+            loaded.inspection += 1;
+          }
+        } else if (tot > 0) {
+          insProd.run({
+            src_file: fileName,
+            src_row: sheetNo * 1000000 + row.n,
+            report: info.label,
+            production_date: jdate,
+            product_code: code,
+            product_name: name,
+            station: cleanVal(get(row, 'station')),
+            work_center: info.label,
+            sound_qty: tot
+          });
+          loaded.production += 1;
+        }
+      }
+    }
+  });
+  run();
+
+  return {
+    rowsIn,
+    rowsLoaded: loaded.inprocess + loaded.inspection + loaded.production,
+    message: `عیب حین تولید: ${loaded.inprocess} | عیب بازرسی: ${loaded.inspection} | تولید: ${loaded.production}`
+      + (skipped.length ? ` | ${skipped.join(' / ')}` : ''),
+    detail: loaded
+  };
+}
+
 // ---------------------------------------------------------------- اجرا
 export async function runImport({ files = null, removeMissing = false } = {}) {
   await dbReady;                       // اطمینان از آماده بودن پایگاه داده
   const db = getDb();
   const t0 = Date.now();
-  const entries = fs.readdirSync(RAW_DIR)
-    .filter((f) => /\.(xlsx|xlsm)$/i.test(f) && !f.startsWith('~$'))
-    .map((f) => path.join(RAW_DIR, f));
+  const listDir = (dir) => (fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter((f) => /\.(xlsx|xlsm)$/i.test(f) && !f.startsWith('~$')).map((f) => path.join(dir, f))
+    : []);
+  // اولویت با پوشه گزارش‌های تمیز (خروجی ابزار تبدیل) است.
+  // فایل‌های موجود در پوشه raw فقط «ورودی ابزار تبدیل» هستند و مستقیماً بار نمی‌شوند،
+  // مگر این‌که خودشان یک گزارش تمیز باشند.
+  const entries = [
+    ...listDir(CLEAN_DIR).map((p) => ({ path: p, from: 'clean' })),
+    ...listDir(RAW_DIR).map((p) => ({ path: p, from: 'raw' }))
+  ];
 
   const targets = files && files.length
-    ? entries.filter((p) => files.includes(path.basename(p)))
+    ? entries.filter((e) => files.includes(path.basename(e.path)))
     : entries;
 
   const results = [];
-  for (const filePath of targets) {
+  for (const entry of targets) {
+    const filePath = entry.path;
     const fileName = path.basename(filePath);
     let sheet;
     try {
-      sheet = await readSheet(filePath);
+      const sheets = await readWorkbook(filePath);
+      sheet = sheets.find((sh) => sh.rows.length) || { headers: [], idx: new Map(), rows: [] };
       const type = detectType(sheet.headers);
-      if (!type) {
+      // تشخیص «گزارش تمیز» نیازمند بررسی همه شیت‌هاست
+      const isClean = sheets.some((sh) => CLEAN_SHEETS[normalizeText(sh.name).toLowerCase()])
+        || isCleanReport(sheets);
+      if (!isClean && !type) {
         markImport(db, fileName, 'ناشناس', 0, 0, 'error', 'نوع فایل بر اساس ستون‌ها تشخیص داده نشد', fs.statSync(filePath).size);
         results.push({ file: fileName, type: 'ناشناس', rows: 0, status: 'error', message: 'نوع فایل تشخیص داده نشد' });
         continue;
       }
       let r;
-      if (type === 'inprocess') r = await importInprocess(db, filePath, fileName);
+      let typeLabel = type;
+      if (isClean) {
+        r = await importClean(db, filePath, fileName);
+        typeLabel = 'گزارش تمیز';
+      } else if (entry.from === 'raw' && !isClean) {
+        // ورودی خام ابزار تبدیل: مستقیماً وارد پایگاه نمی‌شود
+        markImport(db, fileName, 'ورودی خام', 0, 0, 'info',
+          'این فایل ورودیِ ابزار تبدیل است؛ ابتدا دستور «npm run clean» را اجرا کنید', fs.statSync(filePath).size);
+        db.prepare('UPDATE import_file SET source_kind = ? WHERE file_name = ?').run('raw', fileName);
+        results.push({ file: fileName, type: 'ورودی خام', rows: 0, status: 'info',
+          message: 'ورودی ابزار تبدیل - با npm run clean به گزارش تمیز تبدیل می‌شود' });
+        log(`${fileName} -> ورودی خام ابزار تبدیل (نادیده گرفته شد)`);
+        continue;
+      } else if (type === 'inprocess') r = await importInprocess(db, filePath, fileName);
       else if (type === 'inspection') r = await importInspection(db, filePath, fileName);
       else if (type === 'production') r = await importProduction(db, filePath, fileName);
       else r = await importProducts(db, filePath, fileName);
 
-      markImport(db, fileName, type, r.rowsIn, r.rowsLoaded, 'ok', r.message || null, fs.statSync(filePath).size);
-      results.push({ file: fileName, type, rows: r.rowsLoaded, status: 'ok', message: r.message || null });
-      log(`${fileName} -> ${type} (${r.rowsLoaded} ردیف)`);
+      markImport(db, fileName, typeLabel, r.rowsIn, r.rowsLoaded, 'ok', r.message || null, fs.statSync(filePath).size);
+      db.prepare('UPDATE import_file SET source_kind = ? WHERE file_name = ?').run(isClean ? 'clean' : 'raw', fileName);
+      results.push({ file: fileName, type: typeLabel, rows: r.rowsLoaded, status: 'ok', message: r.message || null });
+      log(`${fileName} -> ${typeLabel} (${r.rowsLoaded} ردیف)`);
     } catch (err) {
       markImport(db, fileName, 'خطا', 0, 0, 'error', String(err.message || err), fs.statSync(filePath).size);
       results.push({ file: fileName, type: 'خطا', rows: 0, status: 'error', message: String(err.message || err) });
@@ -640,7 +976,7 @@ export async function runImport({ files = null, removeMissing = false } = {}) {
 
   // حذف ردیف‌های فایل‌هایی که دیگر در پوشه نیستند
   if (removeMissing) {
-    const present = new Set(entries.map((p) => path.basename(p)));
+    const present = new Set(entries.map((e) => path.basename(e.path)));
     const stale = db.prepare('SELECT DISTINCT file_name FROM import_file').all()
       .map((r) => r.file_name).filter((n) => !present.has(n));
     for (const name of stale) {

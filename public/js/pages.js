@@ -2,7 +2,8 @@
 import { api, filterQuery, faInt, faDec, escapeHtml, downloadCsv, toast, state } from './core.js';
 import { barH, pareto, trendCombo, donut, scatter, deltaBars, productionChart } from './charts.js';
 import {
-  cardShell, kpiCard, loadingCard, emptyCard, dataTable, matrixTable, infoPopoverHtml
+  cardShell, kpiCard, loadingCard, emptyCard, dataTable, matrixTable, infoPopoverHtml,
+  periodSeg, wireSeg
 } from './ui.js';
 import { GLOSSARY } from './glossary.js';
 
@@ -10,6 +11,18 @@ const DEFECT_LABEL = { inprocess: 'تعداد عیوب', inspection: 'تعداد
 
 function defectWord() {
   return DEFECT_LABEL[state.source] || DEFECT_LABEL.inprocess;
+}
+
+/** توضیح کوتاهِ دوره انتخابی */
+function periodHint() {
+  return `دوره: ${PERIOD_HINT[state.trendGroup] || 'ماهانه'}`;
+}
+const PERIOD_HINT = { day: 'روزانه', week: 'هفتگی', month: 'ماهانه', quarter: 'فصلی' };
+
+/** بازترسیم یک صفحه پس از تغییر دوره */
+function rerender(page, root) {
+  const target = root && root.id === 'page-root' ? root : document.getElementById('page-root');
+  if (target) page.render(target);
 }
 
 function sourceNote() {
@@ -36,7 +49,7 @@ export const home = {
     root.innerHTML = loadingCard();
     const [s, tr, defectBd, stationBd, productBd, causeBd] = await Promise.all([
       get('/api/summary'),
-      get('/api/trend', { group: 'month' }),
+      get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 12 }),
       get('/api/breakdown', { dim: 'station', limit: 10 }),
       get('/api/breakdown', { dim: 'product', limit: 10 }),
@@ -58,8 +71,9 @@ export const home = {
       ${grid(3, kpis, 'kpi-grid')}
       ${grid(1, cardShell({
         title: 'روند تولید، عیوب و PPM در زمان',
-        subtitle: 'ستون‌ها تعداد تولید و عیوب؛ خط قرمز شاخص PPM است',
+        subtitle: `ستون‌ها تعداد تولید و عیوب؛ خط قرمز شاخص PPM است — ${periodHint()}`,
         info: 'ppm',
+        actions: periodSeg({ id: 'home-period', current: state.trendGroup || 'month' }),
         body: '<div class="chart chart-lg" id="home-trend"></div>',
         foot: sourceNote()
       }))}
@@ -111,7 +125,7 @@ export const management = {
     root.innerHTML = loadingCard();
     const [s, tr, branchBd, productBd, groupBd, defectBd, stationBd, matrix, prevStation] = await Promise.all([
       get('/api/summary'),
-      get('/api/trend', { group: 'month' }),
+      get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'branch', limit: 6 }),
       get('/api/breakdown', { dim: 'product', limit: 40 }),
       get('/api/breakdown', { dim: 'final_group', limit: 8 }),
@@ -143,9 +157,11 @@ export const management = {
         kpiCard({ label: 'زمان رفع عیب', value: faDec(s.rework_hours, 1), unit: 'ساعت', info: 'rework_hours', tone: 'muted' })
       ].join(''), 'kpi-grid')}
       ${grid(1, cardShell({
-        title: 'روند ماهانه تولید، عیوب و PPM',
-        subtitle: s.prev ? `مقایسه با دوره قبل: ${faInt(s.prev.from)} تا ${faInt(s.prev.to)}` : 'بازه‌ای انتخاب کنید تا مقایسه دوره قبل نمایش داده شود',
+        title: 'روند تولید، عیوب و PPM',
+        subtitle: (s.prev ? `مقایسه با دوره قبل: ${faInt(s.prev.from)} تا ${faInt(s.prev.to)} — ` : '')
+          + `دوره نمایش: ${PERIOD_HINT[state.trendGroup] || 'ماهانه'}`,
         info: 'ppm',
+        actions: periodSeg({ id: 'mg-period', current: state.trendGroup || 'month' }),
         body: '<div class="chart chart-lg" id="mg-trend"></div>',
         foot: sourceNote()
       }))}
@@ -214,8 +230,10 @@ export const inprocess = {
   async render(root) {
     state.source = 'inprocess';
     root.innerHTML = loadingCard();
-    const [s, defectBd, stationBd, domainBd, causeBd, partFamBd, partBd, supplierBd, operatorBd, failureBd, repairBd, processBd, matrix, timesBd] = await Promise.all([
+    const [s, tr, defectBd, stationBd, domainBd, causeBd, partFamBd, partBd, supplierBd, operatorBd,
+      failureBd, repairBd, processBd, reportBd, repairNotesBd, matrix, timesBd] = await Promise.all([
       get('/api/summary'),
+      get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 15 }),
       get('/api/breakdown', { dim: 'station', limit: 12 }),
       get('/api/breakdown', { dim: 'process_domain', limit: 10 }),
@@ -227,6 +245,8 @@ export const inprocess = {
       get('/api/breakdown', { dim: 'failure_mode', limit: 10 }),
       get('/api/breakdown', { dim: 'repair_action', limit: 6 }),
       get('/api/breakdown', { dim: 'process_name', limit: 10 }),
+      get('/api/breakdown', { dim: 'report', limit: 10 }),
+      get('/api/breakdown', { dim: 'repair_desc', limit: 15 }),
       get('/api/matrix', { row: 'defect', col: 'station', rows: 12, cols: 8 }),
       get('/api/times', { dim: 'station', limit: 8 })
     ]);
@@ -241,11 +261,18 @@ export const inprocess = {
         kpiCard({ label: 'میانگین RPN', value: faDec(s.rpn_avg, 1), unit: `بیشینه ${faInt(s.rpn_max)}`, info: 'rpn' })
       ].join(''), 'kpi-grid')}
       ${grid(1, cardShell({
+        title: 'روند تولید، عیوب و PPM',
+        subtitle: `تغییرات در طول زمان — دوره نمایش: ${PERIOD_HINT[state.trendGroup] || 'ماهانه'} (برای دیدن روند روزانه، «روزانه» را انتخاب کنید)`,
+        info: 'ppm',
+        actions: periodSeg({ id: 'ip-period', current: state.trendGroup || 'month' }),
+        body: '<div class="chart chart-lg" id="ip-trend"></div>',
+        foot: sourceNote()
+      }))}
+      ${grid(1, cardShell({
         title: 'پارتو کدهای عیب',
         subtitle: 'مهم‌ترین عیب‌هایی که باید اولویت اصلاحی بگیرند',
         info: 'pareto',
-        body: '<div class="chart chart-lg" id="ip-pareto"></div>',
-        foot: sourceNote()
+        body: '<div class="chart chart-lg" id="ip-pareto"></div>'
       }))}
       ${grid(2, `
         ${cardShell({ title: 'عیوب بر اساس ایستگاه', info: 'station', body: '<div class="chart" id="ip-station"></div>' })}
@@ -260,13 +287,35 @@ export const inprocess = {
         ${cardShell({ title: 'قطعات پرمشکل', body: '<div class="chart" id="ip-part"></div>' })}
       `)}
       ${grid(2, `
-        ${cardShell({ title: 'ثبت‌کننده اطلاعات', subtitle: 'توزیع عیوب بر اساس کاربر ثبت‌کننده', body: '<div class="chart" id="ip-supplier"></div>' })}
+        ${cardShell({ title: 'توزیع عیوب بر اساس گزارش مبدا', subtitle: 'هر گزارش (QV، SMD، ICT، کنترل نهایی) چه سهمی از عیوب دارد', info: 'inprocess', body: '<div class="chart" id="ip-report"></div>' })}
         ${cardShell({ title: 'حالت خرابی بالقوه', info: 'inprocess', body: '<div class="chart" id="ip-failure"></div>' })}
       `)}
       ${grid(2, `
         ${cardShell({ title: 'اپراتورهای مسبب عیب', subtitle: 'در صورت ثبت در سیستم', body: '<div class="chart" id="ip-operator"></div>' })}
         ${cardShell({ title: 'فرآیندهای پرمشکل (OPC)', body: '<div class="chart" id="ip-process"></div>' })}
       `)}
+      ${grid(1, cardShell({
+        title: 'توضیحات تعمیرات',
+        subtitle: 'شرح اقدامی که واحد تعمیرات روی عیوب ثبت کرده است (پرتکرارترها)',
+        info: 'repair_desc',
+        body: repairNotesBd.length ? dataTable({
+          columns: {
+            label: 'توضیحات تعمیرات',
+            defects: 'تعداد عیب',
+            rows_count: 'تعداد رکورد',
+            production: 'تولید مرتبط',
+            ppm: 'PPM'
+          },
+          rows: repairNotesBd.map((r) => ({
+            label: r.label,
+            defects: faInt(r.defects),
+            rows_count: faInt(r.rows_count),
+            production: faInt(r.production),
+            ppm: faInt(r.ppm)
+          })),
+          maxHeight: '380px'
+        }) : emptyCard('توضیحی برای تعمیرات ثبت نشده است')
+      }))}
       ${grid(1, cardShell({
         title: 'زمان صرف‌شده به تفکیک ایستگاه',
         subtitle: 'مجموع زمان عیب‌یابی، رفع عیب و تست مجدد (ساعت)',
@@ -300,6 +349,9 @@ export const inprocess = {
       }))}
     `;
 
+    wireSeg(root, 'ip-period', (g) => { state.trendGroup = g; rerender(inprocess, root); });
+    if (tr.length) trendCombo(root.querySelector('#ip-trend'), tr, { defectLabel: 'تعداد عیوب' });
+    else root.querySelector('#ip-trend').innerHTML = emptyCard();
     pareto(root.querySelector('#ip-pareto'), defectBd, { limit: 15 });
     barH(root.querySelector('#ip-station'), stationBd);
     barH(root.querySelector('#ip-domain'), domainBd);
@@ -307,7 +359,7 @@ export const inprocess = {
     donut(root.querySelector('#ip-repair'), repairBd);
     barH(root.querySelector('#ip-partfam'), partFamBd);
     barH(root.querySelector('#ip-part'), partBd);
-    barH(root.querySelector('#ip-supplier'), supplierBd);
+    barH(root.querySelector('#ip-report'), reportBd);
     barH(root.querySelector('#ip-failure'), failureBd);
     barH(root.querySelector('#ip-operator'), operatorBd);
     barH(root.querySelector('#ip-process'), processBd);
@@ -323,13 +375,15 @@ export const inspection = {
   async render(root) {
     state.source = 'inspection';
     root.innerHTML = loadingCard();
-    const [s, defectBd, stationBd, shiftBd, opBd, productBd, matrix] = await Promise.all([
+    const [s, tr, defectBd, stationBd, shiftBd, reportBd, productBd, repairNotesBd, matrix] = await Promise.all([
       get('/api/summary'),
+      get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 15 }),
       get('/api/breakdown', { dim: 'station', limit: 12 }),
       get('/api/breakdown', { dim: 'shift', limit: 6 }),
-      get('/api/breakdown', { dim: 'operation', limit: 12 }),
+      get('/api/breakdown', { dim: 'report', limit: 10 }),
       get('/api/breakdown', { dim: 'product', limit: 30 }),
+      get('/api/breakdown', { dim: 'repair_desc', limit: 15 }),
       get('/api/matrix', { row: 'product', col: 'defect', rows: 10, cols: 6 })
     ]);
 
@@ -343,29 +397,51 @@ export const inspection = {
         kpiCard({ label: 'برنامه‌ریزی‌شده', value: faInt(s.planned), unit: 'دستگاه', hint: 'مقدار کل برنامه‌ریزی شده سفارش‌ها', tone: 'muted' })
       ].join(''), 'kpi-grid')}
       ${grid(1, cardShell({
+        title: 'روند تولید، مردودی و PPM',
+        subtitle: `تغییرات در طول زمان — دوره نمایش: ${PERIOD_HINT[state.trendGroup] || 'ماهانه'}`,
+        info: 'ppm',
+        actions: periodSeg({ id: 'ins-period', current: state.trendGroup || 'month' }),
+        body: '<div class="chart chart-lg" id="ins-trend"></div>',
+        foot: sourceNote()
+      }))}
+      ${grid(1, cardShell({
         title: 'پارتو دلایل مردودی',
         subtitle: 'بیشترین دلایل رد شدن محصول در بازرسی',
         info: 'pareto',
-        body: '<div class="chart chart-lg" id="ins-pareto"></div>',
-        foot: sourceNote() + ' · ' + GLOSSARY.dedup.text
+        body: '<div class="chart chart-lg" id="ins-pareto"></div>'
       }))}
       ${grid(2, `
         ${cardShell({ title: 'مردودی بر اساس ایستگاه بازرسی', info: 'station', body: '<div class="chart" id="ins-station"></div>' })}
-        ${cardShell({ title: 'مردودی بر اساس عنوان عملیات آزمایش', body: '<div class="chart" id="ins-op"></div>' })}
+        ${cardShell({ title: 'مردودی بر اساس گزارش مبدا', subtitle: 'تست نهایی ELE / EMS و کنترل نهایی EMS', info: 'inspection', body: '<div class="chart" id="ins-report"></div>' })}
       `)}
       ${grid(2, `
         ${cardShell({ title: 'توزیع بر اساس شیفت', body: '<div class="chart" id="ins-shift"></div>' })}
         ${cardShell({ title: 'محصولات با بیشترین مردودی', body: '<div class="chart" id="ins-product"></div>' })}
       `)}
+      ${cardShell({
+        title: 'توضیحات تعمیرات',
+        subtitle: 'شرح اقدام تعمیرات ثبت‌شده روی دستگاه‌های مردود',
+        info: 'repair_desc',
+        body: repairNotesBd.length ? dataTable({
+          columns: { label: 'توضیحات تعمیرات', defects: 'تعداد واحد معیوب', rows_count: 'تعداد رکورد', ppm: 'PPM' },
+          rows: repairNotesBd.map((r) => ({
+            label: r.label, defects: faInt(r.defects), rows_count: faInt(r.rows_count), ppm: faInt(r.ppm)
+          })),
+          maxHeight: '340px'
+        }) : emptyCard('توضیحی برای تعمیرات ثبت نشده است')
+      })}
       ${grid(1, cardShell({
         title: 'جدول محوری: محصول × دلیل مردودی',
         body: matrixTable(matrix, { rowHeader: 'محصول' })
       }))}
     `;
 
+    wireSeg(root, 'ins-period', (g) => { state.trendGroup = g; rerender(inspection, root); });
+    if (tr.length) trendCombo(root.querySelector('#ins-trend'), tr, { defectLabel: 'تعداد واحد معیوب' });
+    else root.querySelector('#ins-trend').innerHTML = emptyCard();
     pareto(root.querySelector('#ins-pareto'), defectBd, { limit: 15, valueName: 'تعداد واحد معیوب' });
     barH(root.querySelector('#ins-station'), stationBd, { valueName: 'تعداد واحد معیوب' });
-    barH(root.querySelector('#ins-op'), opBd, { valueName: 'تعدد واحد معیوب' });
+    barH(root.querySelector('#ins-report'), reportBd, { valueName: 'تعداد واحد معیوب' });
     donut(root.querySelector('#ins-shift'), shiftBd, { valueName: 'تعداد واحد معیوب' });
     barH(root.querySelector('#ins-product'), productBd.slice(0, 12), { valueName: 'تعداد واحد معیوب' });
   }
@@ -478,10 +554,10 @@ export const production = {
   title: 'گزارش تولید',
   subtitle: 'حجم تولید روزانه به تفکیک مرکز کاری، محصول و پرسنل',
   roles: ['admin', 'executive', 'expert'],
-  group: 'day',
+  group: 'month',
   async render(root) {
     root.innerHTML = loadingCard();
-    const group = production.group || 'day';
+    const group = production.group || 'month';
     const [s, tr, wcs, domains, branches, products] = await Promise.all([
       get('/api/production/summary'),
       get('/api/production/trend', { group }),
@@ -822,13 +898,20 @@ export const guide = {
           title: 'داده‌ها از کجا می‌آیند؟',
           body: `
             <div class="explain">
-              <p>سامانه از چهار فایل اکسلِ شما یک پایگاه داده می‌سازد و همه نمودارها از همان پایگاه خوانده می‌شوند:</p>
+              <p>مسیر داده‌ها دو مرحله دارد:</p>
+              <p><b>۱) تمیز کردن:</b> چهار فایل خام خروجیِ راهکاران توسط ابزار تبدیل (<code>qc.py</code>) به
+              «گزارش تمیز» تبدیل می‌شود: تاریخ‌ها شمسی و یکدست می‌شوند، کد و شرح عیب نرمال‌سازی می‌گردد،
+              اطلاعات محصول از جدول گروه‌بندی به هر ردیف اضافه می‌شود و ردیف‌های تکراریِ ماه‌های قبل حذف می‌گردد.
+              خروجی در پوشه <code>data/clean</code> قرار می‌گیرد.</p>
+              <p><b>۲) بارگذاری در داشبورد:</b> گزارش‌های تمیز خوانده می‌شوند و در پایگاه داده ذخیره می‌گردند؛
+              همه نمودارها از همان پایگاه خوانده می‌شوند.</p>
+              <p>هر گزارش تمیز هفت بخش دارد که در فیلتر و نمودارها با نام «گزارش مبدا» می‌بینید:</p>
               <ul>
-                <li><b>اطلاعات جامع کیفیت حین تولید</b> — ریز عیوب ثبت‌شده در ایستگاه‌ها همراه با عامل مسبب (6M)، قطعه، تامین‌کننده، زمان تعمیرات و امتیازهای PFMEA.</li>
-                <li><b>گزارش عیب‌های سند بازرسی</b> — نتیجه بازرسی رسمی هر سفارش؛ تعداد دستگاه‌های معیوب.</li>
-                <li><b>گزارش تعداد تولید به تفکیک سند عملکرد</b> — تولید روزانه هر کالا در هر مرکز کاری.</li>
-                <li><b>گروه‌بندی محصولات</b> — نگاشت کد محصول به برنچ، خانواده و گروه نهایی.</li>
+                <li><b>بازرسی چشمی (QV)، SMD، ICT، کنترل نهایی ELE</b> — عیوب حین تولید.</li>
+                <li><b>تست نهایی ELE، تست نهایی EMS، کنترل نهایی EMS</b> — عیوب اسناد بازرسی.</li>
               </ul>
+              <p>در هر بخش، ردیف‌های عیب و ردیف‌های تولید کنار هم هستند؛ به همین دلیل مخرجِ PPM هر بخش
+              دقیقاً از همان مراکز کاریِ خودش گرفته می‌شود.</p>
             </div>`
         })}
         ${cardShell({
@@ -836,10 +919,13 @@ export const guide = {
           body: `
             <div class="explain">
               <ol>
-                <li>فایل اکسل جدید را با همان قالب همیشگی از سیستم بگیرید.</li>
-                <li>از صفحه <b>مدیریت داده و کاربران</b>، فایل را بارگذاری کنید — یا آن را در پوشه <code>data/raw</code> کنار فایل‌های قبلی بگذارید.</li>
-                <li>دکمه <b>به‌روزرسانی همه داده‌ها</b> را بزنید. ردیف‌های همان فایل جایگزین می‌شوند و تکراری ایجاد نمی‌شود.</li>
-                <li>نمودارها بلافاصله با داده جدید نمایش داده می‌شوند.</li>
+                <li>فایل‌های خام جدید را از راهکاران بگیرید و در پوشه <code>data/raw</code> بگذارید.</li>
+                <li>دستور <b><code>npm run refresh</code></b> را اجرا کنید (یا از صفحه مدیریت داده، فایل تمیز را بارگذاری کنید).
+                    این دستور ابتدا گزارش‌ها را تمیز و سپس در پایگاه بارگذاری می‌کند.</li>
+                <li>اگر ترجیح می‌دهید خودتان ابزار تبدیل (qc.py) را اجرا کنید، خروجی را در پوشه <code>data/clean</code> قرار دهید
+                    و فقط <b><code>npm run import</code></b> را بزنید.</li>
+                <li>ردیف‌های هر فایل جایگزین می‌شوند و داده‌های تکراریِ بین گزارش‌ها دوباره شمرده نمی‌شوند.</li>
+                <li>برای به‌روزرسانی نسخه تک‌فایل، <b><code>npm run export</code></b> را اجرا کنید.</li>
               </ol>
               <p class="hint">نیازی به تغییر کد یا ساخت دوباره پایگاه داده نیست.</p>
             </div>`

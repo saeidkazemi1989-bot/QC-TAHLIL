@@ -25,21 +25,23 @@ export const DIMENSIONS = {
   product_family:  { label: 'خانواده محصول',      key: "COALESCE(d.product_family,'نامشخص')",       sources: ['inprocess', 'inspection'], orderLevel: true },
   product_combined:{ label: 'نام محصول ترکیبی',   key: "COALESCE(d.product_combined,'نامشخص')",     sources: ['inprocess', 'inspection'], orderLevel: true },
   product:         { label: 'محصول',              key: "COALESCE(d.product_code,'نامشخص')",         label2: "COALESCE(d.product_name_dim, d.product_code)", sources: ['inprocess', 'inspection'], orderLevel: true },
+  report:          { label: 'گزارش مبدا',         key: "COALESCE(d.report,'نامشخص')",               sources: ['inprocess', 'inspection'] },
   defect:          { label: 'کد عیب',             key: "COALESCE(d.defect_code,'نامشخص')",          label2: "COALESCE(d.defect_desc, d.defect_code)", sources: ['inprocess', 'inspection'] },
   defect_group:    { label: 'دسته عیب',           key: "COALESCE(d.defect_group,'سایر')",           sources: ['inprocess', 'inspection'] },
-  cause_6m:        { label: 'عامل مسبب (6M)',     key: "COALESCE(d.cause_6m,'ثبت نشده')",           sources: ['inprocess'] },
-  part_family:     { label: 'خانواده قطعات',      key: "COALESCE(d.part_family,'ثبت نشده')",        sources: ['inprocess'] },
-  part_name:       { label: 'نام قطعه',           key: "COALESCE(d.part_name,'ثبت نشده')",          sources: ['inprocess'] },
-  supplier:        { label: 'تامین‌کننده',        key: "COALESCE(d.supplier,'ثبت نشده')",           sources: ['inprocess'] },
-  repair_action:   { label: 'اقدام تعمیرات',      key: "COALESCE(d.repair_action,'ثبت نشده')",      sources: ['inprocess'] },
-  repair_desc:     { label: 'توضیحات تعمیرات',    key: "COALESCE(d.repair_desc,'ثبت نشده')",        sources: ['inprocess'] },
-  failure_mode:    { label: 'حالت خرابی بالقوه',  key: "COALESCE(d.failure_mode,'ثبت نشده')",       sources: ['inprocess'] },
-  process_name:    { label: 'نام فرآیند (OPC)',   key: "COALESCE(d.process_name,'ثبت نشده')",       sources: ['inprocess'] },
+  cause_6m:        { label: 'عامل مسبب (6M)',     key: "COALESCE(d.cause_6m,'ثبت نشده')",           sources: ['inprocess', 'inspection'] },
+  part_family:     { label: 'خانواده قطعات',      key: "COALESCE(d.part_family,'ثبت نشده')",        sources: ['inprocess', 'inspection'] },
+  part_name:       { label: 'نام قطعه',           key: "COALESCE(d.part_name,'ثبت نشده')",          sources: ['inprocess', 'inspection'] },
+  supplier:        { label: 'تامین‌کننده',        key: "COALESCE(d.supplier,'ثبت نشده')",          sources: ['inprocess', 'inspection'] },
+  repair_action:   { label: 'اقدام تعمیرات',      key: "COALESCE(d.repair_action,'ثبت نشده')",      sources: ['inprocess', 'inspection'] },
+  repair_desc:     { label: 'توضیحات تعمیرات',    key: "COALESCE(d.repair_desc,'ثبت نشده')",        sources: ['inprocess', 'inspection'] },
+  failure_mode:    { label: 'حالت خرابی بالقوه',  key: "COALESCE(d.failure_mode,'ثبت نشده')",       sources: ['inprocess', 'inspection'] },
+  process_name:    { label: 'نام فرآیند (OPC)',   key: "COALESCE(d.process_name,'ثبت نشده')",       sources: ['inprocess', 'inspection'] },
   registrar:       { label: 'ثبت‌کننده اطلاعات',  key: "COALESCE(d.registrar,'ثبت نشده')",          sources: ['inprocess'] },
-  operator:        { label: 'اپراتور مسبب',       key: "COALESCE(d.operator_name,'ثبت نشده')",      sources: ['inprocess'] },
+  operator:        { label: 'اپراتور مسبب',       key: "COALESCE(d.operator_name,'ثبت نشده')",      sources: ['inprocess', 'inspection'] },
   shift:           { label: 'شیفت',               key: "COALESCE(d.shift,'ثبت نشده')",              sources: ['inspection'], orderLevel: true },
   operation:       { label: 'عنوان عملیات آزمایش', key: "COALESCE(d.operation,'ثبت نشده')",         sources: ['inspection'] }
 };
+
 
 // key  -> برای نماهای عیب (نام مستعار d)
 // keyOrder -> برای نمای سفارش‌ها (نام مستعار o) و جدول تقویم (dd)
@@ -101,7 +103,7 @@ export function summary(f, source = 'inprocess') {
   const def = db.prepare(`
     SELECT COALESCE(SUM(d.defect_qty),0) AS defects,
            COUNT(*)                      AS defect_rows,
-           COUNT(DISTINCT d.order_no)    AS orders_with_defect
+           COUNT(DISTINCT COALESCE(d.order_no, d.order_date || '|' || COALESCE(d.product_code, ''))) AS orders_with_defect
     FROM ${view} d ${dw.sql}
   `).get(dw.params);
 
@@ -251,7 +253,8 @@ export function breakdown(f, source = 'inprocess', dim = 'station', limit = 25) 
     // تولیدِ همان گروه (سفارش‌های آن گروه) مبنای PPM قرار می‌گیرد
     rows = db.prepare(`
       WITH def AS (
-        SELECT ${d.key} AS gkey, MAX(${labelExpr}) AS glabel, COALESCE(SUM(d.defect_qty),0) AS defects
+        SELECT ${d.key} AS gkey, MAX(${labelExpr}) AS glabel, COALESCE(SUM(d.defect_qty),0) AS defects,
+               COUNT(*) AS rows_count
         FROM ${view} d ${dw.sql}
         GROUP BY gkey
       ),
@@ -276,12 +279,13 @@ export function breakdown(f, source = 'inprocess', dim = 'station', limit = 25) 
     // ابعادِ وابسته به عیب: سهم هر مقدار از کل تولیدِ بازه (سهم از PPM کل)
     rows = db.prepare(`
       WITH def AS (
-        SELECT ${d.key} AS gkey, MAX(${labelExpr}) AS glabel, COALESCE(SUM(d.defect_qty),0) AS defects
+        SELECT ${d.key} AS gkey, MAX(${labelExpr}) AS glabel, COALESCE(SUM(d.defect_qty),0) AS defects,
+               COUNT(*) AS rows_count
         FROM ${view} d ${dw.sql}
         GROUP BY gkey
       ),
       total AS (SELECT COALESCE(SUM(o.sound_qty),0) AS production FROM v_order o ${ow.sql})
-      SELECT def.gkey AS key, def.glabel AS label, def.defects AS defects,
+      SELECT def.gkey AS key, def.glabel AS label, def.defects AS defects, def.rows_count AS rows_count,
              (SELECT production FROM total) AS production
       FROM def
       ORDER BY defects DESC
@@ -297,6 +301,7 @@ export function breakdown(f, source = 'inprocess', dim = 'station', limit = 25) 
       key: r.key,
       label: r.label,
       defects: r.defects,
+      rows_count: r.rows_count ?? null,
       production: r.production,
       ppm: r.production > 0 ? (r.defects / r.production) * 1e6 : 0,
       pct: totalDefects ? (r.defects / totalDefects) * 100 : 0,
@@ -332,8 +337,8 @@ export function pfmea(f, limit = 50) {
 // ---------------------------------------------------------------- رکوردهای تفصیلی
 const RECORD_COLUMNS = {
   inprocess: {
-    order_no: 'شماره سفارش',
-    order_date: 'تاریخ سفارش',
+    order_date: 'تاریخ',
+    report: 'گزارش مبدا',
     product_name_dim: 'محصول',
     station: 'ایستگاه',
     process_domain: 'حوزه فرآیندی',
@@ -357,17 +362,21 @@ const RECORD_COLUMNS = {
     operator_name: 'اپراتور'
   },
   inspection: {
-    order_no: 'شماره سفارش',
-    order_date: 'تاریخ سفارش',
-    shift: 'شیفت',
+    order_date: 'تاریخ',
+    report: 'گزارش مبدا',
     product_name_dim: 'محصول',
     station: 'ایستگاه',
-    operation: 'عملیات آزمایش',
+    shift: 'شیفت',
     defect_code: 'کد ایراد',
     defect_desc: 'شرح ایراد',
     defect_qty: 'تعداد واحد معیوب',
-    sound_qty: 'مقدار سالم',
-    planned_qty: 'مقدار برنامه‌ریزی شده'
+    cause_6m: 'عامل مسبب (6M)',
+    part_name: 'قطعه',
+    supplier: 'تامین‌کننده',
+    repair_action: 'اقدام تعمیرات',
+    repair_desc: 'توضیحات تعمیرات',
+    inspector: 'بازرس',
+    operator_name: 'اپراتور'
   }
 };
 

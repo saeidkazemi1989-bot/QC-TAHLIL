@@ -69,12 +69,13 @@ const SOURCE_COLUMNS = {
   inprocess: new Set([
     'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
     'station', 'process_domain', 'defect_code', 'defect_group',
-    'cause_6m', 'repair_action', 'supplier', 'part_family', 'failure_mode'
+    'cause_6m', 'repair_action', 'supplier', 'part_family', 'failure_mode',
+    'report', 'repair_desc'
   ]),
   inspection: new Set([
     'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
     'station', 'process_domain', 'defect_code', 'defect_group',
-    'shift', 'operation'
+    'shift', 'operation', 'report', 'repair_desc'
   ])
 };
 
@@ -95,7 +96,9 @@ export function defectWhere(f, alias = 'd') {
     ['part_family', 'part_family'],
     ['failure_mode', 'failure_mode'],
     ['shift', 'shift'],
-    ['operation', 'operation']
+    ['operation', 'operation'],
+    ['report', 'report'],
+    ['repair_desc', 'repair_desc']
   ];
   for (const [key, col] of detailOnly) {
     if (!allowed.has(col)) continue;
@@ -106,6 +109,11 @@ export function defectWhere(f, alias = 'd') {
 }
 
 /** شرط‌های قابل اعمال بر نمای سفارش‌ها (v_order) */
+export const SOURCE_REPORTS = {
+  inprocess: ['بازرسی چشمی (QV)', 'SMD', 'ICT', 'کنترل نهایی ELE'],
+  inspection: ['تست نهایی ELE', 'تست نهایی EMS', 'کنترل نهایی EMS']
+};
+
 export function orderWhere(f, alias = 'o') {
   const where = ['1 = 1'];
   const params = {};
@@ -113,9 +121,14 @@ export function orderWhere(f, alias = 'o') {
   for (const [key, col] of PRODUCT_FIELDS) listClause(alias, key, f[key], where, params, col);
   for (const [key, col] of STATION_FIELDS) listClause(alias, key, f[key], where, params, col);
   listClause(alias, 'shift', f.shift, where, params, 'shift');
-  // مخرجِ تولید فقط سفارش‌هایی که در منبع انتخابی عیب حضور دارند
-  if (f.source === 'inprocess') where.push(`${alias}.sources LIKE '%inprocess%'`);
-  if (f.source === 'inspection') where.push(`${alias}.sources LIKE '%inspection%'`);
+  // مخرجِ تولید فقط رکوردهای تولیدِ همان گزارش‌هایی که منبع عیب از آن‌هاست
+  // (گزارش‌های حین تولید: QV/SMD/ICT/کنترل نهایی ELE — گزارش‌های بازرسی: FULTELE/FULT EMS/QC EMS)
+  const reports = SOURCE_REPORTS[f.source];
+  if (reports && reports.length) {
+    const keys = reports.map((_, i) => `@rep${i}`);
+    reports.forEach((label, i) => { params[`rep${i}`] = label; });
+    where.push(`(${alias}.report IS NULL OR ${alias}.sources LIKE '%inprocess%' OR ${alias}.sources LIKE '%inspection%' OR ${alias}.report IN (${keys.join(', ')}))`);
+  }
   return { sql: `WHERE ${where.join(' AND ')}`, params };
 }
 

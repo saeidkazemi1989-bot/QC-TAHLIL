@@ -8,9 +8,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '..');
 export const DATA_DIR = path.join(ROOT, 'data');
 export const RAW_DIR = path.join(DATA_DIR, 'raw');
+/** پوشه گزارش‌های تمیز‌شده (خروجی ابزار تبدیل) که ورودی اصلی سامانه است */
+export const CLEAN_DIR = path.join(DATA_DIR, 'clean');
 export const DB_PATH = process.env.QC_DB || path.join(DATA_DIR, 'qc.db');
 
 fs.mkdirSync(RAW_DIR, { recursive: true });
+fs.mkdirSync(CLEAN_DIR, { recursive: true });
 
 let dbInstance = null;
 
@@ -21,6 +24,7 @@ export const ready = (async () => {
   db.pragma('foreign_keys = ON');
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   db.exec(schema);
+  migrate(db);
   seedStatic(db);
   dbInstance = db;
   const w = driverWarnings();
@@ -28,6 +32,37 @@ export const ready = (async () => {
   console.log(`[db] پایگاه داده آماده است (${db.driver}): ${DB_PATH}`);
   return db;
 })();
+
+/** افزودن ستون‌های جدید به پایگاه‌های موجود (بدون نیاز به بازسازی) */
+function migrate(db) {
+  const add = (table, col, type) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!cols.includes(col)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+      console.log(`[db] ستون ${col} به جدول ${table} افزوده شد`);
+    }
+  };
+  // ستون‌های گزارش تمیز راهکاران
+  for (const t of ['fact_inprocess', 'fact_inspection']) {
+    add(t, 'report', 'TEXT');            // نام شیت/گزارش مبدا (qv، SMD، ICT، QC ELE، FULTELE، ...)
+  }
+  for (const c of [
+    ['repair_desc', 'TEXT'], ['repair_action', 'TEXT'], ['cause_6m', 'TEXT'],
+    ['failure_mode', 'TEXT'], ['failure_mode_type', 'TEXT'],
+    ['part_code', 'TEXT'], ['part_name', 'TEXT'], ['part_family', 'TEXT'], ['supplier', 'TEXT'],
+    ['severity', 'REAL'], ['occurrence', 'REAL'], ['detection', 'REAL'], ['rpn', 'REAL'],
+    ['fix_time_min', 'REAL'], ['retest_time_min', 'REAL'], ['troubleshoot_time_min', 'REAL'],
+    ['operator_name', 'TEXT'], ['inspector', 'TEXT'],
+    ['process_code', 'TEXT'], ['process_name', 'TEXT'],
+    ['tool', 'TEXT'], ['location', 'TEXT'], ['part_family', 'TEXT'], ['notes', 'TEXT']
+  ]) add('fact_inspection', c[0], c[1]);
+  add('fact_inprocess', 'notes', 'TEXT');
+  add('fact_production', 'report', 'TEXT');
+  add('fact_production', 'planned_qty', 'REAL');
+  add('fact_production', 'station', 'TEXT');
+  add('fact_order', 'report', 'TEXT');
+  add('import_file', 'source_kind', 'TEXT');
+}
 
 export function getDb() {
   if (!dbInstance) {
