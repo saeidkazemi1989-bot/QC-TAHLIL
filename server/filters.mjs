@@ -6,7 +6,7 @@ import { j2d, d2j, parseJalali, formatJalali } from './jalali.mjs';
 
 /** فیلدهایی که به‌صورت فهرست (چندمقداری) از کلاینت می‌آیند */
 export const LIST_FILTERS = [
-  'branch', 'final_group', 'product_family', 'product_code',
+  'final_group', 'product_family', 'product_code',
   'station', 'process_domain', 'defect_code', 'defect_group',
   'cause_6m', 'shift', 'repair_action', 'supplier', 'part_family',
   'failure_mode', 'operation', 'work_center', 'product_combined',
@@ -50,7 +50,6 @@ function listClause(alias, field, values, where, params, col) {
 const PRODUCT_FIELDS = [
   ['category', 'category'],
   ['stage', 'stage'],
-  ['branch', 'branch'],
   ['final_group', 'final_group'],
   ['product_family', 'product_family'],
   ['product_combined', 'product_combined'],
@@ -70,20 +69,20 @@ const DEFECT_FIELDS = [
 // ستون‌هایی که فقط در یکی از دو منبع عیب وجود دارند
 const SOURCE_COLUMNS = {
   inprocess: new Set([
-    'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
+    'final_group', 'product_family', 'product_combined', 'product_code',
     'category', 'stage',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'cause_6m', 'repair_action', 'supplier', 'part_family', 'failure_mode',
     'report', 'repair_desc'
   ]),
   inspection: new Set([
-    'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
+    'final_group', 'product_family', 'product_combined', 'product_code',
     'category', 'stage',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'shift', 'operation', 'report', 'repair_desc'
   ]),
   polymer: new Set([
-    'branch', 'final_group', 'product_family', 'product_combined', 'product_code',
+    'final_group', 'product_family', 'product_combined', 'product_code',
     'category', 'stage',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'report', 'repair_desc', 'shift'
@@ -165,7 +164,6 @@ export function productionWhere(f, alias = 'p') {
   const prodfields = [
     ['category', 'category'],
     ['stage', 'stage'],
-    ['branch', 'branch'],
     ['final_group', 'final_group'],
     ['product_family', 'product_family'],
     ['product_code', 'product_code'],

@@ -264,7 +264,7 @@ def test_input_dedup_checks_all_source_columns():
     })
     exact_copy = dict(base)
 
-    data, _, _, details = B.build_sheet(
+    data, _, _, details, _ = B.build_sheet(
         cfg, [], [base, different_count, different_order, counterpart_suffix, exact_copy],
         [], {}, {}, None, dedup=True)
     assert len(data) == 4, data
@@ -293,15 +293,15 @@ def test_fultele_excludes_qv_and_normalizes_counterpart_suffixes():
     qv_row = dict(base, **{"عنوان عملیات آزمایش": "qv"})
     real_row = dict(base, **{"عنوان عملیات آزمایش": "وان قلع"})
     # QV حتی اگر نسخهٔ همتای غیر-QV نداشته باشد، نباید به FULTELE برود.
-    qv_data, _, _, _ = B.build_sheet(cfg, [], [qv_row], [], {}, {}, None)
+    qv_data, _, _, _, _ = B.build_sheet(cfg, [], [qv_row], [], {}, {}, None)
     assert qv_data == [], qv_data
-    real_data, _, _, _ = B.build_sheet(cfg, [], [real_row], [], {}, {}, None)
+    real_data, _, _, _, _ = B.build_sheet(cfg, [], [real_row], [], {}, {}, None)
     assert len(real_data) == 1, real_data
     assert real_data[0][9] == "TS-08", real_data[0]
     assert real_data[0][10] == "اتصال کوتاه و تار عنکبوتی", real_data[0]
     # FULTELE فقط کدهای محصول 121 و 122 را می‌پذیرد.
     other_code_row = dict(real_row, **{"کد محصول": "3206133"})
-    other_data, _, _, _ = B.build_sheet(cfg, [], [other_code_row], [], {}, {}, None)
+    other_data, _, _, _, _ = B.build_sheet(cfg, [], [other_code_row], [], {}, {}, None)
     assert other_data == [], other_data
     # پرانتزِ توضیحی و معنادار پاک نمی‌شود.
     assert B.norm_defect_description("BEZEL(لک/موج/خش)") == "BEZEL(لک/موج/خش)"

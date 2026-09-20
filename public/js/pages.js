@@ -204,10 +204,10 @@ export const management = {
   roles: ['admin', 'executive'],
   async render(root) {
     root.innerHTML = loadingCard();
-    const [s, tr, branchBd, productBd, groupBd, defectBd, stationBd, matrix, prevStation] = await Promise.all([
+    const [s, tr, categoryBd, productBd, groupBd, defectBd, stationBd, matrix, prevStation] = await Promise.all([
       get('/api/summary'),
       get('/api/trend', { group: state.trendGroup || 'month' }),
-      get('/api/breakdown', { dim: 'branch', limit: 6 }),
+      get('/api/breakdown', { dim: 'category', limit: 6 }),
       get('/api/breakdown', { dim: 'product_unified', limit: 40 }),
       get('/api/breakdown', { dim: 'final_group', limit: 8 }),
       get('/api/breakdown', { dim: 'defect_group', limit: 8 }),
@@ -248,9 +248,9 @@ export const management = {
       }))}
       ${grid(2, `
         ${cardShell({
-          title: 'مقایسه برنچ‌ها',
-          subtitle: 'تولید و عیوب به تفکیک برنچ',
-          body: '<div class="chart" id="mg-branch"></div>'
+          title: 'مقایسه دسته‌های محصول',
+          subtitle: 'تولید و عیوب به تفکیک دسته محصول (الکترونیک / پلیمر / EMS)',
+          body: '<div class="chart" id="mg-category"></div>'
         })}
         ${cardShell({
           title: 'دسته‌های عیب',
@@ -294,7 +294,7 @@ export const management = {
 
     wireSeg(root, 'mg-period', (g) => { state.trendGroup = g; rerender(management, root); });
     trendCombo(root.querySelector('#mg-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0, onClick: trendDrill(management, root) });
-    if (branchBd.length) barH(root.querySelector('#mg-branch'), branchBd, { valueName: defectWord() });
+    if (categoryBd.length) barH(root.querySelector('#mg-category'), categoryBd, { valueName: defectWord() });
     if (defectBd.length) donut(root.querySelector('#mg-defectgroup'), defectBd, { valueName: defectWord() });
     if (deltaRows.length) deltaBars(root.querySelector('#mg-delta'), deltaRows);
     const scatterRows = productBd.filter((r) => r.production > 0).slice(0, 15);
@@ -313,7 +313,7 @@ export const inprocess = {
     state.source = 'inprocess';
     root.innerHTML = loadingCard();
     const [s, tr, defectBd, stationBd, domainBd, causeBd, partFamBd, partBd, supplierBd, operatorBd,
-      failureBd, repairBd, processBd, reportBd, repairNotesBd, matrix, timesBd] = await Promise.all([
+      failureBd, repairBd, processBd, reportBd, repairNotesBd, matrix, matrixPS, timesBd] = await Promise.all([
       get('/api/summary'),
       get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 15 }),
@@ -330,6 +330,7 @@ export const inprocess = {
       get('/api/breakdown', { dim: 'report', limit: 10 }),
       get('/api/breakdown', { dim: 'repair_desc', limit: 15 }),
       get('/api/matrix', { row: 'defect', col: 'station', rows: 12, cols: 8 }),
+      get('/api/matrix', { row: 'product_unified', col: 'stage', rows: 15, cols: 8 }),
       get('/api/times', { dim: 'station', limit: 8 })
     ]);
 
@@ -424,11 +425,19 @@ export const inprocess = {
           maxHeight: '320px'
         })
       }))}
-      ${grid(1, cardShell({
-        title: 'جدول محوری: کد عیب × ایستگاه',
-        subtitle: 'هر عیب در کدام ایستگاه رخ می‌دهد',
-        body: matrixTable(matrix, { rowHeader: 'کد عیب' })
-      }))}
+      ${grid(2, `
+        ${cardShell({
+          title: 'جدول محوری: کد عیب × ایستگاه',
+          subtitle: 'هر عیب در کدام ایستگاه رخ می‌دهد',
+          body: matrixTable(matrix, { rowHeader: 'کد عیب' })
+        })}
+        ${cardShell({
+          title: 'عیوب هر محصول به تفکیک مرحله',
+          subtitle: 'یک محصول چند کد دارد (هر کد یک مرحله)؛ این جدول نشان می‌دهد از عیوبِ آن محصول، چه تعداد در SMD، چه تعداد در مونتاژ/QV، تکمیل کاری و کنترل نهایی بوده است',
+          info: 'product_stage',
+          body: matrixTable(matrixPS, { rowHeader: 'محصول (یکپارچه)' })
+        })}
+      `)}
     `;
 
     wireSeg(root, 'ip-period', (g) => { state.trendGroup = g; rerender(inprocess, root); });
@@ -642,12 +651,12 @@ export const production = {
     // اگر از صفحهٔ دیگری روی یک ماه/هفته دریل شده باشد، همان تفکیک اینجا هم رعایت می‌شود
     const group = ['day', 'week', 'month'].includes(state.trendGroup)
       ? state.trendGroup : (production.group || 'month');
-    const [s, tr, wcs, domains, branches, products] = await Promise.all([
+    const [s, tr, wcs, domains, categories, products] = await Promise.all([
       get('/api/production/summary'),
       get('/api/production/trend', { group }),
       get('/api/production/breakdown', { dim: 'work_center', limit: 15 }),
       get('/api/production/breakdown', { dim: 'process_domain', limit: 8 }),
-      get('/api/production/breakdown', { dim: 'branch', limit: 5 }),
+      get('/api/production/breakdown', { dim: 'category', limit: 5 }),
       get('/api/production/breakdown', { dim: 'product', limit: 15 })
     ]);
 
@@ -678,7 +687,7 @@ export const production = {
         ${cardShell({ title: 'تولید به تفکیک حوزه فرآیندی', info: 'process_domain', body: '<div class="chart" id="pr-domain"></div>' })}
       `)}
       ${grid(2, `
-        ${cardShell({ title: 'تولید به تفکیک برنچ', body: '<div class="chart" id="pr-branch"></div>' })}
+        ${cardShell({ title: 'تولید به تفکیک دسته محصول', body: '<div class="chart" id="pr-category"></div>' })}
         ${cardShell({
           title: 'پرمحصول‌ترین کالاها',
           body: dataTable({
@@ -703,7 +712,7 @@ export const production = {
     });
     barH(root.querySelector('#pr-wc'), wcs.map((r) => ({ ...r, defects: r.production })), { valueName: 'تولید', color: '#3f9e78' });
     barH(root.querySelector('#pr-domain'), domains.map((r) => ({ ...r, defects: r.production })), { valueName: 'تولید', color: '#3f9e78' });
-    barH(root.querySelector('#pr-branch'), branches.map((r) => ({ ...r, defects: r.production })), { valueName: 'تولید', color: '#3f9e78' });
+    barH(root.querySelector('#pr-category'), categories.map((r) => ({ ...r, defects: r.production })), { valueName: 'تولید', color: '#3f9e78' });
 
     root.querySelectorAll('#prod-group button').forEach((b) => {
       b.addEventListener('click', () => {
@@ -1255,6 +1264,33 @@ export const guide = {
             سامانه برای هر سفارش و کد عیب، فقط یک عملیات را می‌شمارد تا عدد واقعی نمایش داده شود.</p>
           </div>`
       }))}
+      ${grid(1, cardShell({
+        title: 'آمار عیب چطور شمرده می‌شود؟',
+        subtitle: 'قواعد شمارش که در ابزار تبدیل (qc.py) و بارگذاری اعمال می‌شوند',
+        info: 'defect_count',
+        body: `
+            <div class="explain">
+              <ol>
+                <li><b>مبنای شمارش «تعداد عیب مربوطه» است</b>، نه «تعداد عیب».
+                    در فایل جامع کیفیت، ستون «تعداد عیب» کلِ عیبِ آن سفارش است و در هر ردیف تکرار
+                    می‌شود؛ جمع‌زدن آن آمار را چند برابر نشان می‌دهد. «تعداد عیب مربوطه» سهمِ همان
+                    ردیف است و جمع آن برای هر (سفارش، محصول، کد عیب) برابرِ تعداد عیبِ همان گروه است.</li>
+                <li><b>فقط عیب‌های تحلیل‌شدهٔ جامع کیفیت می‌آیند.</b> ردیفی که «تعداد عیب مربوطه»
+                    نداشته باشد (یعنی هنوز تحلیل نشده) در آمار نمی‌آید.</li>
+                <li><b>اولویت با فایل جامع کیفیت است.</b> اگر عیبی با همان <b>شماره سفارش تولید</b>،
+                    محصول و کد عیب در جامع کیفیت تحلیل شده باشد، ردیف تکراریِ آن در
+                    «گزارش عیب‌های سند بازرسی» دوباره شمرده نمی‌شود. عیب‌های سند بازرسی فقط وقتی
+                    می‌آیند که در جامع کیفیت تحلیل نشده باشند (مثل کدهای EMS و پلیمر).</li>
+                <li><b>ضایعات فقط برای پلیمر</b> از همان سند عملکرد می‌آید؛ برای الکترونیک و EMS
+                    فایل ضایعات جداست.</li>
+                <li><b>دسته محصول (الکترونیک / پلیمر / EMS)</b> جایگزین «برنچ» شده است؛ چون هر دو
+                    یک ماهیت داشتند (برنچِ الکترونیک = ELE، پلیمر = POL، EMS = EMS).</li>
+                <li><b>نام محصول یکپارچه:</b> یک محصول چند کد دارد (هر کد یک مرحله). جدول
+                    «عیوب هر محصول به تفکیک مرحله» نشان می‌دهد عیوبِ آن محصول چند تا در SMD،
+                    چند تا در مونتاژ/QV، تکمیل کاری و کنترل نهایی بوده است.</li>
+              </ol>
+            </div>`
+        }))}
       ${grid(1, cardShell({
         title: 'واژه‌نامه شاخص‌ها',
         subtitle: 'روی علامت «؟» کنار هر شاخص در صفحه‌ها هم همین توضیح‌ها را می‌بینید',

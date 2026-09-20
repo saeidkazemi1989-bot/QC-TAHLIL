@@ -14,7 +14,7 @@ await ready;
 const combos = [
   {},
   { from: '1405/05/01', to: '1405/05/31' },
-  { branch: 'ELE,EMS' },
+  { category: 'الکترونیک,EMS' },
   { station: 'سامسونگ 1,سامسونگ 2' },
   { defect_group: 'ظاهری' },
   { defect_code: 'IP-58,SS-10' },
@@ -31,7 +31,7 @@ const combos = [
   { category: 'پلیمر' },
   { stage: 'تزریق و کنترل نهایی دایال', category: 'پلیمر' },
   { q: 'قلع' },
-  { from: '1405/05/01', to: '1405/05/31', branch: 'ELE', station: 'سامسونگ 1', cause_6m: 'تجهیرات و ماشین آلات', defect_group: 'لحیم‌کاری و قطعه‌گذاری' }
+  { from: '1405/05/01', to: '1405/05/31', category: 'الکترونیک', station: 'سامسونگ 1', cause_6m: 'تجهیرات و ماشین آلات', defect_group: 'لحیم‌کاری و قطعه‌گذاری' }
 ];
 
 let pass = 0; const fails = [];
@@ -55,7 +55,7 @@ for (const source of ['inprocess', 'inspection', 'polymer']) {
       ['records', () => A.records(f, source, { page: 1, size: 10, sort: 'defect_qty' })],
       ['records-q', () => A.records({ ...f, q: 'TS' }, source, { page: 2, size: 5 })]
     ];
-    for (const dim of ['station', 'process_domain', 'branch', 'final_group', 'product_family', 'product_combined',
+    for (const dim of ['station', 'process_domain', 'category', 'stage', 'final_group', 'product_family', 'product_combined',
                        'product', 'defect', 'defect_group', 'cause_6m', 'part_family', 'part_name', 'supplier',
                        'repair_action', 'repair_desc', 'failure_mode', 'process_name', 'registrar', 'operator',
                        'shift', 'operation', 'product_unified', 'category', 'stage']) {
@@ -76,7 +76,7 @@ for (const combo of combos) {
     ['prod-trend-month', () => A.productionTrend(f, 'month')],
     ['prod-bd-wc', () => A.productionBreakdown(f, 'work_center', 10)],
     ['prod-bd-domain', () => A.productionBreakdown(f, 'process_domain', 8)],
-    ['prod-bd-branch', () => A.productionBreakdown(f, 'branch', 5)],
+    ['prod-bd-category', () => A.productionBreakdown(f, 'category', 5)],
     ['prod-bd-product', () => A.productionBreakdown(f, 'product', 10)],
     ['prod-bd-final', () => A.productionBreakdown(f, 'final_group', 6)]
   ];

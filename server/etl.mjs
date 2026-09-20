@@ -1040,6 +1040,54 @@ export function computeProductUnified(db) {
   return byUnified.size;
 }
 
+/**
+ * حذف ردیف‌های عیبِ «تحلیل‌نشده» از شیت‌های حین تولید.
+ * در فایل «اطلاعات جامع کیفیت» هر عیب یا تحلیل شده (توضیحات تعمیرات، عامل 6M،
+ * قطعه، زمان‌ها) یا فقط ثبت اولیه است. ردیفی که هیچ‌کدام از این نشانه‌ها را
+ * ندارد تحلیل نشده و نباید در آمار عیب بیاید (ابزار تبدیل qc.py هم آن‌ها را
+ * کنار می‌گذارد؛ این قانون برای گزارش‌های قدیمی‌تر هم اعمال می‌شود).
+ */
+export function dropUnanalyzed(db) {
+  const info = db.prepare(`
+    DELETE FROM fact_inprocess
+    WHERE (repair_desc IS NULL OR TRIM(repair_desc) = '')
+      AND (repair_action IS NULL OR TRIM(repair_action) = '')
+      AND (cause_6m IS NULL OR TRIM(cause_6m) = '')
+      AND (part_code IS NULL OR TRIM(part_code) = '')
+      AND (part_name IS NULL OR TRIM(part_name) = '')
+      AND (failure_mode IS NULL OR TRIM(failure_mode) = '')
+      AND COALESCE(fix_time_min, 0) = 0
+      AND COALESCE(retest_time_min, 0) = 0
+      AND COALESCE(troubleshoot_time_min, 0) = 0
+  `).run();
+  const removed = info.changes || 0;
+  if (removed) log(`ردیف‌های عیبِ تحلیل‌نشدهٔ جامع کیفیت حذف شد: ${removed}`);
+  return removed;
+}
+
+/**
+ * اولویتِ «اطلاعات جامع کیفیت» بر «گزارش عیب‌های سند بازرسی».
+ * اگر عیبی (با تاریخ، کد محصول و کد عیبِ یکسان) در شیت‌های حین تولید
+ * (QV/SMD/ICT/کنترل نهایی) تحلیل شده باشد، ردیفِ تکراریِ همان عیب در شیت‌های
+ * سند بازرسی (FULTELE/FULT EMS/QC EMS) دوباره شمرده نمی‌شود.
+ * توجه: کدهای EMS (3*) و پلیمر (2*) در فایل جامع کیفیت نیستند، پس حذف نمی‌شوند.
+ */
+export function dedupeAcrossSources(db) {
+  const info = db.prepare(`
+    DELETE FROM fact_inspection
+    WHERE defect_code IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM fact_inprocess p
+        WHERE p.order_date IS fact_inspection.order_date
+          AND p.product_code IS fact_inspection.product_code
+          AND p.defect_code IS fact_inspection.defect_code
+      )
+  `).run();
+  const removed = info.changes || 0;
+  if (removed) log(`عیب‌های تکراریِ سند بازرسی (تحلیل‌شده در جامع کیفیت) حذف شد: ${removed}`);
+  return removed;
+}
+
 export function dedupeAcrossFiles(db) {
   let removed = 0;
   const groups = [
@@ -1157,6 +1205,8 @@ export async function runImport({ files = null, removeMissing = false } = {}) {
   }
 
   dedupeAcrossFiles(db);
+  dropUnanalyzed(db);
+  dedupeAcrossSources(db);
   rebuildDims(db);
   computeProductClass(db);
   computeProductUnified(db);

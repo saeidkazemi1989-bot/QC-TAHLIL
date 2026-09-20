@@ -145,7 +145,6 @@ function renderShell() {
 const FILTER_DEFS = [
   { key: 'category', label: 'دسته محصول', options: () => (state.meta && state.meta.categories) || [] },
   { key: 'stage', label: 'زیرگروه محصول', options: () => (state.meta && state.meta.stages) || [] },
-  { key: 'branch', label: 'برنچ', options: () => state.meta.branches },
   { key: 'final_group', label: 'گروه محصول نهایی', options: () => state.meta.final_groups },
   { key: 'product_family', label: 'خانواده محصول', options: () => state.meta.product_families },
   { key: 'product_code', label: 'محصول', options: () => state.meta.products.map((p) => ({ value: p.key, label: `${p.label}` })), searchable: true },

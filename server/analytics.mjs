@@ -22,7 +22,6 @@ export const DIMENSIONS = {
   category:        { label: 'دسته محصول',         key: "COALESCE(d.category,'سایر')",               label2: null, sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   stage:           { label: 'زیرگروه محصول',      key: "COALESCE(d.stage,'سایر')",                  label2: null, sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   process_domain:  { label: 'حوزه فرآیندی',       key: "COALESCE(d.process_domain,'سایر')",         sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
-  branch:          { label: 'برنچ',               key: "COALESCE(d.branch,'نامشخص')",               sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   final_group:     { label: 'گروه محصول نهایی',   key: "COALESCE(d.final_group,'نامشخص')",          sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   product_family:  { label: 'خانواده محصول',      key: "COALESCE(d.product_family,'نامشخص')",       sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
   product_combined:{ label: 'نام محصول ترکیبی',   key: "COALESCE(d.product_combined,'نامشخص')",     sources: ['inprocess', 'inspection', 'polymer'], orderLevel: true },
@@ -480,7 +479,7 @@ export function productionTrend(f, group = 'day') {
 const PROD_DIMS = {
   work_center:    { label: 'مرکز کاری',      key: "COALESCE(p.work_center,'نامشخص')" },
   process_domain: { label: 'حوزه فرآیندی',   key: "COALESCE(p.process_domain,'سایر')" },
-  branch:         { label: 'برنچ',           key: "COALESCE(p.branch,'نامشخص')" },
+  category:       { label: 'دسته محصول',     key: "COALESCE(p.category,'سایر')" },
   final_group:    { label: 'گروه محصول',     key: "COALESCE(p.final_group,'نامشخص')" },
   product:        { label: 'محصول',          key: "COALESCE(p.product_code,'نامشخص')", label2: "COALESCE(p.product_name_dim, p.product_code)" }
 };
@@ -514,7 +513,6 @@ export function meta() {
   return {
     categories: opt("SELECT DISTINCT category AS v FROM dim_product WHERE category IS NOT NULL ORDER BY category"),
     stages: opt("SELECT DISTINCT stage AS v FROM dim_product WHERE stage IS NOT NULL ORDER BY stage"),
-    branches: opt("SELECT DISTINCT branch AS v FROM dim_product WHERE branch IS NOT NULL ORDER BY branch"),
     final_groups: opt("SELECT DISTINCT final_group AS v FROM dim_product WHERE final_group IS NOT NULL ORDER BY final_group"),
     product_families: opt("SELECT DISTINCT product_family AS v FROM dim_product WHERE product_family IS NOT NULL ORDER BY product_family"),
     product_combined: opt("SELECT DISTINCT product_combined AS v FROM dim_product WHERE product_combined IS NOT NULL ORDER BY product_combined"),

@@ -57,6 +57,7 @@ for (const source of sources) {
   put(`/api/matrix?source=${source}&row=defect&col=station&rows=12&cols=8`, matrix(f, source, 'defect', 'station', 12, 8));
   put(`/api/matrix?source=${source}&row=final_group&col=defect_group&rows=8&cols=5`, matrix(f, source, 'final_group', 'defect_group', 8, 5));
   put(`/api/matrix?source=${source}&row=product&col=defect&rows=10&cols=6`, matrix(f, source, 'product', 'defect', 10, 6));
+  put(`/api/matrix?source=${source}&row=product_unified&col=stage&rows=15&cols=8`, matrix(f, source, 'product_unified', 'stage', 15, 8));
   put(`/api/records?source=${source}&page=1&size=500&sort=defect_qty&dir=DESC`,
     { ...records(f, source, { page: 1, size: 500, sort: 'defect_qty', dir: 'DESC' }), columns: recordColumns(source) });
   // تحلیل گام‌به‌گام (دریل‌داون) برای کل بازه
@@ -70,7 +71,7 @@ const pf = parseFilters({ source: 'inprocess' });
 for (const source of sources) {
   put(`/api/production/summary?source=${source}`, productionSummary(pf));
   for (const g of ['day', 'week', 'month']) put(`/api/production/trend?group=${g}&source=${source}`, productionTrend(pf, g));
-  for (const dim of ['work_center', 'process_domain', 'branch', 'product', 'final_group']) {
+  for (const dim of ['work_center', 'process_domain', 'category', 'product', 'final_group']) {
     put(`/api/production/breakdown?dim=${dim}&limit=30&source=${source}`, productionBreakdown(pf, dim, 30));
   }
 }

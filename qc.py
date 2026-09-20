@@ -871,12 +871,31 @@ def input_row_summary(input_row):
 # ---------------------------------------------------------------------------
 # تولید شیت‌ها
 # ---------------------------------------------------------------------------
-def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False):
+def defect_key(row):
+    """کلیدِ یکتای عیب برای تشخیص تکرار بین دو فایل منبع.
+
+    اولویت با فایل «اطلاعات جامع کیفیت» است چون تحلیل دارد؛ اگر عیبی با همین
+    شماره سفارش (یا تاریخ)، محصول و کد عیب در آنجا تحلیل شده باشد، ردیفِ
+    تکراریِ «گزارش عیب‌های سند بازرسی» دوباره شمرده نمی‌شود.
+    """
+    order = s(row.get("شماره سفارش تولید"))
+    code = s(row.get("کد محصول") or row.get("کد کالا"))
+    dc = norm_dc(row.get("کد عیب") or row.get("کد ایراد"))
+    if not dc:
+        return None
+    if order:
+        return (order, code, dc)
+    date = s(row.get("تاریخ سفارش") or row.get("تاریخ تولید"))
+    return (date, code, dc)
+
+
+def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False, analyzed=None):
     rows = []
     seq = 0
     hist_defect, hist_prod = (history.get(cfg["name"]) or (Counter(), Counter()))
     skipped = 0
     dropped_nogroup = 0
+    dropped_quality_dup = 0     # ردیف‌هایی که در جامع کیفیت تحلیل شده‌اند
     # این ساختار فقط برای گزینهٔ --dedup است و بر پایهٔ گزارش ورودی کار می‌کند.
     seen_input_rows = {}
     duplicate_details = []
@@ -925,6 +944,14 @@ def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False):
         }
         if not defect_kept(cfg, dc, source_row):
             continue
+        # تکراریِ سند بازرسی: اگر همین عیب در جامع کیفیت تحلیل شده، اینجا نمی‌آید
+        dup_of_quality = 0
+        if analyzed is not None and cfg["defect_source"] == "defect" and analyzed:
+            key = defect_key(r)
+            if key is not None and key in analyzed:
+                dropped_quality_dup += 1
+                dup_of_quality = 1
+                continue
         if dedup:
             duplicate = register_input_row(
                 seen_input_rows, source_kind, input_row_number, r)
@@ -934,7 +961,18 @@ def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False):
         # پسوندهای همتاسازِ شرح (مثل (ف) و (1)) نیز مانند کد عیب حذف می‌شوند.
         desc = norm_defect_description(
             r.get("شرح ایراد") or r.get("شرح عیب")) or "-"
-        cnt = n(r.get("تعداد ایراد") or r.get("تعداد عیب مربوطه") or r.get("تعداد عیب"))
+        if cfg["defect_source"] == "quality":
+            # در فایل «اطلاعات جامع کیفیت» فقط ردیف‌هایی می‌آیند که تحلیل شده‌اند؛
+            # نشانهٔ تحلیل‌شدن پر بودن ستون «تعداد عیب مربوطه» است (سهمِ همین ردیف
+            # از تعداد عیب سفارش). ردیف‌های بدون این ستون تحلیل نشده‌اند و نمی‌آیند.
+            # تعدادِ نمایش‌داده‌شده هم همان «تعداد عیب مربوطه» است، نه «تعداد عیب»
+            # (ستون «تعداد عیب» کلِ عیبِ سفارش است و جمع‌زدن آن چند برابر می‌شود).
+            rel = r.get("تعداد عیب مربوطه")
+            if rel is None or s(rel) == "" or n(rel) == 0:
+                continue
+            cnt = n(rel)
+        else:
+            cnt = n(r.get("تعداد ایراد") or r.get("تعداد عیب"))
         # ردیفی که قبلاً ثبت شده تکرار نمی‌شود. «تعداد ایراد» جزو کلید است؛
         # بنابراین مثلاً تعداد ۲ و ۳ هرگز با هم یک رکورد محسوب نمی‌شوند.
         hkey = (date, code, dc, cnt)
@@ -1015,7 +1053,51 @@ def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False):
     rows.sort(key=lambda t: (order[t[0]], t[1], t[2]))
     data = [t[3] for t in rows]
     # duplicate_details فقط از مقایسهٔ تمام ستون‌های گزارش ورودی ساخته شده است.
-    return data, skipped, dropped_nogroup, duplicate_details
+    return data, skipped, dropped_nogroup, duplicate_details, dropped_quality_dup
+def check_counts(quality, log=print):
+    """بررسی درستیِ شمارش عیب‌ها در فایل «اطلاعات جامع کیفیت».
+
+    قاعده: برای هر (شماره سفارش، کد محصول، کد عیب)، جمعِ ستون
+    «تعداد عیب مربوطه» باید برابرِ «تعداد عیب» باشد (ستون «تعداد عیب»
+    کلِ عیبِ همان ردیف/گروه است و جمع‌زدن آن باعث چندبرابر شدن آمار می‌شود).
+    """
+    groups = {}
+    for r in quality:
+        dc = norm_dc(r.get("کد عیب"))
+        if not dc:
+            continue
+        key = defect_key(r)
+        if key is None:
+            continue
+        g = groups.setdefault(key, {"rel": 0.0, "tot": [], "rows": 0})
+        g["rel"] += n(r.get("تعداد عیب مربوطه"))
+        g["tot"].append(n(r.get("تعداد عیب")))
+        g["rows"] += 1
+    matched = mismatched = 0
+    examples = []
+    for key, g in groups.items():
+        tots = [v for v in g["tot"] if v]
+        ok = bool(tots) and any(abs(g["rel"] - v) < 1e-6 for v in tots)
+        if ok:
+            matched += 1
+        else:
+            mismatched += 1
+            if len(examples) < 8:
+                examples.append((key, g["rel"], tots, g["rows"]))
+    total_rel = sum(g["rel"] for g in groups.values())
+    log("\n========== بررسی شمارش عیب‌ها (جامع کیفیت) ==========")
+    log(f"  گروه‌های (سفارش، محصول، کد عیب): {len(groups)}")
+    log(f"  جمع «تعداد عیب مربوطه» (مبنای آمار): {total_rel:,.0f}")
+    log(f"  گروه‌هایی که جمعِ مربوطه با «تعداد عیب» برابر است: {matched}")
+    log(f"  گروه‌های متفاوت (هر ردیف عددِ مستقل دارد): {mismatched}")
+    for key, rel, tots, rows in examples:
+        log(f"        - سفارش {key[0]} | محصول {key[1]} | عیب {key[2]}: "
+            f"جمع مربوطه={rel:g} | تعداد عیبِ ردیف‌ها={tots} | ردیف‌ها={rows}")
+    log("  نکته: مبنای شمارش همیشه «تعداد عیب مربوطه» است؛ جمع‌زدن ستون "
+        "«تعداد عیب» آمار را چند برابر نشان می‌دهد.")
+    return {"groups": len(groups), "matched": matched, "mismatched": mismatched, "total": total_rel}
+
+
 def style_sheet(ws, ncols):
     for c in range(1, ncols + 1):
         ws.cell(row=1, column=c).font = Font(bold=True)
@@ -1080,12 +1162,31 @@ def run_build(quality, defect, prod, grouping, history=None, month=None,
             "#N/A می‌شوند. مطمئن شوید ستونی با هدر «کد راهکاران» یا "
             "«کد گروه محصول» در جدول هست و کدهای آن با «کد کالا» "
             "فایل‌های سایت یکی‌اند (مثل 3206133).")
+    # مجموعهٔ عیب‌های «تحلیل‌شده» در فایل جامع کیفیت:
+    # اولویت با این فایل است؛ ردیفِ تکراریِ همان عیب در سند بازرسی نمی‌آید.
+    analyzed = set()
+    analyzed_rows = 0
+    unanalyzed_rows = 0
+    for r in quality_rows:
+        key = defect_key(r)
+        if key is None:
+            continue
+        rel = r.get("تعداد عیب مربوطه")
+        if rel is None or s(rel) == "" or n(rel) == 0:
+            unanalyzed_rows += 1
+            continue
+        analyzed.add(key)
+        analyzed_rows += 1
+    if analyzed:
+        log(f"  عیب‌های تحلیل‌شدهٔ جامع کیفیت: {analyzed_rows} ردیف "
+            f"(تکراریِ سند بازرسی حذف می‌شود) | ردیف‌های تحلیل‌نشدهٔ حذف‌شده: {unanalyzed_rows}")
+
     out_wb = openpyxl.Workbook()
     out_wb.remove(out_wb.active)
     for cfg in SHEETS:
-        data, skipped, nogroup, duplicate_details = build_sheet(
+        data, skipped, nogroup, duplicate_details, quality_dups = build_sheet(
             cfg, quality_rows, defect_rows, prod_rows, grp,
-            hist_reported or {}, month, dedup=dedup)
+            hist_reported or {}, month, dedup=dedup, analyzed=analyzed)
         title = cfg["name"] + (" " if cfg["name"] == "qv" else "")
         ws = out_wb.create_sheet(title=title)
         ws.append(headers_for(cfg))
@@ -1103,6 +1204,8 @@ def run_build(quality, defect, prod, grouping, history=None, month=None,
         if duplicate_details:
             extra += (" | تکراریِ کاملاً یکسان در گزارش ورودی: "
                       f"{len(duplicate_details)}")
+        if quality_dups:
+            extra += f" | تکراری با جامع کیفیت (حذف): {quality_dups}" 
         log(f"  شیت {title:>12}: {len(data):>4} ردیف (عیب: {ndef} | "
             f"تولید: {len(data)-ndef}){extra}")
         if duplicate_details:
@@ -1348,6 +1451,8 @@ def main():
     ap.add_argument("--month", default=None, help="مثلا 1405/06 (اختیاری)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--validate", default=None)
+    ap.add_argument("--check-counts", action="store_true",
+                    help="فقط بررسی شمارش عیب‌های فایل جامع کیفیت (تعداد عیب مربوطه در برابر تعداد عیب)")
     ap.add_argument("--dedup", action="store_true",
                     help="رکوردهای کاملاً تکراری (همهٔ ستون‌ها یکسان) را جدا کند؛ "
                          "یکی نگه داشته می‌شود")
@@ -1357,6 +1462,9 @@ def main():
                     help="کد لایسنس (اگر license.key کنار برنامه نباشد)")
     args = ap.parse_args()
     lic = ensure_license(cli_key=args.license)
+    if getattr(args, "check_counts", False):
+        check_counts(load_sheet(args.quality))
+        return
     if lic is None:
         print("برنامه بدون لایسنس معتبر اجرا نمی‌شود.")
         print("کد لایسنس را با --license \"CODE\" بفرستید یا آن را در فایل")
