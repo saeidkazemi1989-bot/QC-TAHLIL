@@ -107,7 +107,7 @@ export const home = {
   roles: ['admin', 'executive', 'expert'],
   async render(root) {
     root.innerHTML = loadingCard();
-    const [s, tr, defectBd, stationBd, productBd, causeBd, catBd, stageBd] = await Promise.all([
+    const [s, tr, defectBd, stationBd, productBd, causeBd, catBd, stageBd, repairBd] = await Promise.all([
       get('/api/summary'),
       get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 12 }),
@@ -115,7 +115,8 @@ export const home = {
       get('/api/breakdown', { dim: 'product_unified', limit: 10 }),
       get('/api/breakdown', { dim: state.source === 'inprocess' ? 'cause_6m' : 'shift', limit: 8 }),
       get('/api/breakdown', { dim: 'category', limit: 6 }),
-      get('/api/breakdown', { dim: 'stage', limit: 8 })
+      get('/api/breakdown', { dim: 'stage', limit: 8 }),
+      get('/api/breakdown', { dim: 'repair_desc', limit: 12 })
     ]);
 
     const kpis = [
@@ -141,9 +142,13 @@ export const home = {
       }))}
       ${grid(2, `
         ${cardShell({
-          title: 'پارتو عیوب (مهم‌ترین عیب‌ها)',
-          subtitle: 'ستون‌ها تعداد عیب و خط نارنجی سهم تجمعی',
-          info: 'pareto',
+          title: 'پارتو توضیحات تعمیرات',
+          subtitle: 'بیشترین ایرادهایی که تعمیرات ثبت کرده — ستون‌ها تعداد عیب و خط نارنجی سهم تجمعی',
+          info: 'repair_pareto',
+          actions: `<div class="seg" id="home-pareto-seg">
+              <button type="button" data-g="repair" class="active">توضیحات تعمیرات</button>
+              <button type="button" data-g="defect">کد عیب</button>
+            </div>`,
           body: '<div class="chart" id="home-pareto"></div>'
         })}
         ${cardShell({
@@ -184,8 +189,18 @@ export const home = {
 
     wireSeg(root, 'home-period', (g) => { state.trendGroup = g; rerender(home, root); });
     trendCombo(root.querySelector('#home-trend'), tr, { target: Number(state.meta?.settings?.ppm_target) || 0, onClick: trendDrill(home, root) });
-    if (defectBd.length) pareto(root.querySelector('#home-pareto'), defectBd, { valueName: defectWord() });
-    else root.querySelector('#home-pareto').innerHTML = emptyCard();
+    const homeParetoDim = { current: 'repair' };
+    const drawHomePareto = () => {
+      const data = homeParetoDim.current === 'repair' ? repairBd : defectBd;
+      if (data.length) pareto(root.querySelector('#home-pareto'), data, { valueName: defectWord() });
+      else root.querySelector('#home-pareto').innerHTML = emptyCard();
+    };
+    wireSeg(root, 'home-pareto-seg', (g) => {
+      homeParetoDim.current = g;
+      root.querySelectorAll('#home-pareto-seg button').forEach((b) => b.classList.toggle('active', b.dataset.g === g));
+      drawHomePareto();
+    });
+    drawHomePareto();
     if (stationBd.length) barH(root.querySelector('#home-station'), stationBd, { valueName: defectWord() });
     if (productBd.length) barH(root.querySelector('#home-product'), productBd, { valueName: defectWord() });
     if (causeBd.length) donut(root.querySelector('#home-cause'), causeBd, { valueName: defectWord() });
@@ -354,9 +369,13 @@ export const inprocess = {
         foot: sourceNote()
       }))}
       ${grid(1, cardShell({
-        title: 'پارتو کدهای عیب',
-        subtitle: 'مهم‌ترین عیب‌هایی که باید اولویت اصلاحی بگیرند',
-        info: 'pareto',
+        title: 'پارتو توضیحات تعمیرات',
+        subtitle: 'مهم‌ترین ایرادهایی که تعمیرات دیده و ثبت کرده است (اولویت اصلاحی)',
+        info: 'repair_pareto',
+        actions: `<div class="seg" id="ip-pareto-seg">
+            <button type="button" data-g="repair" class="active">توضیحات تعمیرات</button>
+            <button type="button" data-g="defect">کد عیب</button>
+          </div>`,
         body: '<div class="chart chart-lg" id="ip-pareto"></div>'
       }))}
       ${grid(2, `
@@ -493,7 +512,18 @@ export const inprocess = {
     drawDS();
     if (tr.length) trendCombo(root.querySelector('#ip-trend'), tr, { defectLabel: 'تعداد عیوب', onClick: trendDrill(inprocess, root) });
     else root.querySelector('#ip-trend').innerHTML = emptyCard();
-    pareto(root.querySelector('#ip-pareto'), defectBd, { limit: 15 });
+    const ipParetoDim = { current: 'repair' };
+    const drawIpPareto = () => {
+      const data = ipParetoDim.current === 'repair' ? repairNotesBd : defectBd;
+      if (data.length) pareto(root.querySelector('#ip-pareto'), data, { limit: 15 });
+      else root.querySelector('#ip-pareto').innerHTML = emptyCard();
+    };
+    wireSeg(root, 'ip-pareto-seg', (g) => {
+      ipParetoDim.current = g;
+      root.querySelectorAll('#ip-pareto-seg button').forEach((b) => b.classList.toggle('active', b.dataset.g === g));
+      drawIpPareto();
+    });
+    drawIpPareto();
     barH(root.querySelector('#ip-station'), stationBd);
     barH(root.querySelector('#ip-domain'), domainBd);
     donut(root.querySelector('#ip-cause'), causeBd);
@@ -546,9 +576,13 @@ export const inspection = {
         foot: sourceNote()
       }))}
       ${grid(1, cardShell({
-        title: 'پارتو دلایل مردودی',
-        subtitle: 'بیشترین دلایل رد شدن محصول در بازرسی',
-        info: 'pareto',
+        title: 'پارتو توضیحات تعمیرات',
+        subtitle: 'بیشترین ایرادهایی که تعمیرات برای واحدهای مردود ثبت کرده است',
+        info: 'repair_pareto',
+        actions: `<div class="seg" id="ins-pareto-seg">
+            <button type="button" data-g="repair" class="active">توضیحات تعمیرات</button>
+            <button type="button" data-g="defect">کد ایراد</button>
+          </div>`,
         body: '<div class="chart chart-lg" id="ins-pareto"></div>'
       }))}
       ${grid(2, `
@@ -580,7 +614,18 @@ export const inspection = {
     wireSeg(root, 'ins-period', (g) => { state.trendGroup = g; rerender(inspection, root); });
     if (tr.length) trendCombo(root.querySelector('#ins-trend'), tr, { defectLabel: 'تعداد واحد معیوب', onClick: trendDrill(inspection, root) });
     else root.querySelector('#ins-trend').innerHTML = emptyCard();
-    pareto(root.querySelector('#ins-pareto'), defectBd, { limit: 15, valueName: 'تعداد واحد معیوب' });
+    const insParetoDim = { current: 'repair' };
+    const drawInsPareto = () => {
+      const data = insParetoDim.current === 'repair' ? repairNotesBd : defectBd;
+      if (data.length) pareto(root.querySelector('#ins-pareto'), data, { limit: 15, valueName: 'تعداد واحد معیوب' });
+      else root.querySelector('#ins-pareto').innerHTML = emptyCard();
+    };
+    wireSeg(root, 'ins-pareto-seg', (g) => {
+      insParetoDim.current = g;
+      root.querySelectorAll('#ins-pareto-seg button').forEach((b) => b.classList.toggle('active', b.dataset.g === g));
+      drawInsPareto();
+    });
+    drawInsPareto();
     barH(root.querySelector('#ins-station'), stationBd, { valueName: 'تعداد واحد معیوب' });
     barH(root.querySelector('#ins-report'), reportBd, { valueName: 'تعداد واحد معیوب' });
     donut(root.querySelector('#ins-shift'), shiftBd, { valueName: 'تعداد واحد معیوب' });

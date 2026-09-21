@@ -349,16 +349,14 @@ export function pfmea(f, limit = 50) {
 // ---------------------------------------------------------------- رکوردهای تفصیلی
 const RECORD_COLUMNS = {
   inprocess: {
-    order_no: 'شماره سفارش',
     order_date: 'تاریخ',
-    related_defect_qty: 'تعداد عیب مربوطه',
     report: 'گزارش مبدا',
     product_name_dim: 'محصول',
     station: 'ایستگاه',
     process_domain: 'حوزه فرآیندی',
     defect_code: 'کد عیب',
     defect_desc: 'شرح عیب',
-    defect_qty: 'تعداد عیب',
+    defect_qty: 'تعداد عیب (مربوطه)',
     cause_6m: 'عامل مسبب (6M)',
     failure_mode: 'حالت خرابی',
     part_name: 'قطعه',
@@ -376,7 +374,6 @@ const RECORD_COLUMNS = {
     operator_name: 'اپراتور'
   },
   polymer: {
-    order_no: 'شماره سفارش',
     order_date: 'تاریخ',
     product_name_dim: 'محصول',
     station: 'ایستگاه',
@@ -388,7 +385,6 @@ const RECORD_COLUMNS = {
     repair_desc: 'توضیحات تعمیرات'
   },
   inspection: {
-    order_no: 'شماره سفارش',
     order_date: 'تاریخ',
     report: 'گزارش مبدا',
     product_name_dim: 'محصول',

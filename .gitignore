@@ -6,4 +6,5 @@ data/*.db-shm
 .DS_Store
 __pycache__/
 *.pyc
-tools/qc-test/
+tools/qc-test/node_modules/
+tools/qc-test/testbundle.js
