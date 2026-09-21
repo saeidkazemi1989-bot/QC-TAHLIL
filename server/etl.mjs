@@ -738,6 +738,8 @@ const CC = {
   insp: ['نام بازرس'],
   tool: ['کد و نام تجهیزات و ابزارآلات'],
   loc: ['جانمایی قطعه معیوب در فرآیند SMD'],
+  // ستون پایانیِ همهٔ شیت‌ها (qc.py): شماره سفارش تولید
+  order: ['شماره سفارش تولید'],
   opcCode: ['کد فرآیند (OPC)'],
   opcName: ['نام فرآیند (OPC)'],
   notes: ['توضیحات']
@@ -804,13 +806,13 @@ export async function importClean(db, filePath, fileName) {
   const insIp = db.prepare(`
     INSERT INTO fact_inprocess
       (src_file, src_row, report, order_no, order_date, product_code, product_name, station,
-       process_code, process_name, defect_code, defect_desc, defect_qty, sound_qty,
+       process_code, process_name, defect_code, defect_desc, defect_qty, related_defect_qty, sound_qty,
        cause_6m, failure_mode, failure_mode_type, severity, occurrence, detection, rpn,
        part_code, part_name, part_family, supplier, tool, location,
        repair_action, repair_desc, inspector, operator_name, notes,
        fix_time_min, retest_time_min, troubleshoot_time_min)
     VALUES (@src_file,@src_row,@report,@order_no,@order_date,@product_code,@product_name,@station,
-       @process_code,@process_name,@defect_code,@defect_desc,@defect_qty,@sound_qty,
+       @process_code,@process_name,@defect_code,@defect_desc,@defect_qty,@related_defect_qty,@sound_qty,
        @cause_6m,@failure_mode,@failure_mode_type,@severity,@occurrence,@detection,@rpn,
        @part_code,@part_name,@part_family,@supplier,@tool,@location,
        @repair_action,@repair_desc,@inspector,@operator_name,@notes,
@@ -882,7 +884,7 @@ export async function importClean(db, filePath, fileName) {
           src_file: fileName,
           src_row: sheetNo * 1000000 + row.n,
           report: info.label,
-          order_no: null,
+          order_no: cleanVal(get(row, 'order')),
           order_date: jdate,
           product_code: code,
           product_name: cleanVal(get(row, 'rawName')) || name,
@@ -916,7 +918,10 @@ export async function importClean(db, filePath, fileName) {
 
         if (dqty > 0) {
           if (info.source === 'inprocess') {
-            insIp.run({ ...common, sound_qty: 0, tool: cleanVal(get(row, 'tool')), location: cleanVal(get(row, 'loc')), rpn });
+            // در شیت‌های حین تولید، عددِ «تعداد ایراد» همان «تعداد عیب مربوطه»
+            // است (qc.py فقط ردیف‌های تحلیل‌شده را با این مبنا می‌نویسد)
+            insIp.run({ ...common, related_defect_qty: dqty, sound_qty: 0,
+              tool: cleanVal(get(row, 'tool')), location: cleanVal(get(row, 'loc')), rpn });
             loaded.inprocess += 1;
           } else {
             insIns.run({ ...common, shift: cleanVal(get(row, 'shift')), operation: null, rpn });
@@ -1073,9 +1078,21 @@ export function dropUnanalyzed(db) {
  * توجه: کدهای EMS (3*) و پلیمر (2*) در فایل جامع کیفیت نیستند، پس حذف نمی‌شوند.
  */
 export function dedupeAcrossSources(db) {
-  const info = db.prepare(`
+  // کلیدِ دقیق: شماره سفارش + کد محصول + کد عیب (اگر شماره سفارش در هر دو طرف هست)
+  const byOrder = db.prepare(`
     DELETE FROM fact_inspection
-    WHERE defect_code IS NOT NULL
+    WHERE defect_code IS NOT NULL AND order_no IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM fact_inprocess p
+        WHERE p.order_no IS fact_inspection.order_no
+          AND p.product_code IS fact_inspection.product_code
+          AND p.defect_code IS fact_inspection.defect_code
+      )
+  `).run();
+  // گزارش‌های قدیمی که شماره سفارش ندارند: همان تاریخ + محصول + کد عیب
+  const byDate = db.prepare(`
+    DELETE FROM fact_inspection
+    WHERE defect_code IS NOT NULL AND order_no IS NULL
       AND EXISTS (
         SELECT 1 FROM fact_inprocess p
         WHERE p.order_date IS fact_inspection.order_date
@@ -1083,7 +1100,7 @@ export function dedupeAcrossSources(db) {
           AND p.defect_code IS fact_inspection.defect_code
       )
   `).run();
-  const removed = info.changes || 0;
+  const removed = (byOrder.changes || 0) + (byDate.changes || 0);
   if (removed) log(`عیب‌های تکراریِ سند بازرسی (تحلیل‌شده در جامع کیفیت) حذف شد: ${removed}`);
   return removed;
 }

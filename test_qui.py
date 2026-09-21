@@ -255,7 +255,8 @@ def test_input_dedup_checks_all_source_columns():
         "ایستگاه": "وان قلع و کنترل ماشینی پس از وان",
     }
     different_count = dict(base, **{"تعداد ایراد": 2})
-    # شماره سفارش در خروجی نیست؛ پس خروجی مشابه است اما ورودی متفاوت و باید بماند.
+    # شماره سفارش در ستون پایانی خروجی است؛ خروجیِ این ردیف با بقیه فرق می‌کند
+    # اما چون ورودی متفاوت است باید حفظ شود (تکراری محسوب نمی‌شود).
     different_order = dict(base, **{"شماره سفارش تولید": "SO-002"})
     # کد/شرح بعد از نرمال‌سازی خروجی یکسان‌اند، اما خود ورودی متفاوت است.
     counterpart_suffix = dict(base, **{
@@ -273,7 +274,10 @@ def test_input_dedup_checks_all_source_columns():
     assert details[0]["duplicate_input_row"] == 6, details
     assert details[0]["input_row"] == exact_copy, details
     # سه ردیف خروجی با وجود شباهت کامل، چون ورودی‌هایشان فرق دارد، حفظ شده‌اند.
-    assert data[0] == data[2] == data[3], data
+    # شماره سفارش حالا در ستون پایانی خروجی است، پس تفاوت سفارش دیده می‌شود.
+    assert data[0][-1] == "SO-001", data[0]
+    assert data[2][-1] == "SO-002", data[2]
+    assert data[0][:-1] == data[3][:-1] == data[2][:-1], data
     assert data[1][11] == 2, data[1]
     print("input-report all-columns dedup guard OK")
 

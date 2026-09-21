@@ -540,6 +540,12 @@ def sheet_rows_raw(path, name):
 # ---------------------------------------------------------------------------
 # ساخت ردیف‌ها
 # ---------------------------------------------------------------------------
+# ستونِ پایانیِ همهٔ شیت‌ها: شماره سفارش تولید (برای ردیابی و برای اینکه
+# اگر عیبی در جامع کیفیت تحلیل شده باشد، ردیف تکراریِ همان سفارش در سند
+# بازرسی دوباره شمرده نشود)
+ORDER_COL = "شماره سفارش تولید"
+
+
 BASE_HEADERS = [
     "تاریخ", "شیفت کاری", "کد گروه محصول", "کد محصول", "نام محصول",
     "خانواده محصول", "نام محصول ترکیبی", "گروه محصول نهایی", "ایستگاه",
@@ -556,7 +562,7 @@ BASE_HEADERS = [
     "کد بازرس چشمی", "نام بازرس", "AOI", "نام بازرس AOI",
     "نوع قطعات تولیدی و تامینی", "وضعیت اعلام ایرادات", "توضیحات اضافه",
     "توضیحات", "Control Station", "حد قابل قبول", "هدف",
-    "علت افت یا بهبود PPM", "حد قابل قبول عظام", "هدف عظام",
+    "علت افت یا بهبود PPM", "حد قابل قبول عظام", "هدف عظام", ORDER_COL,
 ]
 # شیت SMD در قالب کاربر 68 ستونه است: علاوه بر ستون «ماه»، ستون
 # «جانمایی قطعه معیوب در فرآیند SMD» بعد از «نام قطعه» و ۱۳ ستون
@@ -581,7 +587,7 @@ SMD_HEADERS = [
     "کد اپراتور\nPaste SMD", "نام اپراتور\nPaste SMD", "ماشین مونتاژ SMD",
     "ماشین \nPaste SMD", "ماشین\nOven SMD", "Control Station",
     "نام اپراتور بازرس SMD", "کد \nکنترلر بازرس SMD", "شماره \nBOM SMD",
-    "توضیحات", "حد قابل قبول عظام", "هدف عظام",
+    "توضیحات", "حد قابل قبول عظام", "هدف عظام", ORDER_COL,
 ]
 def headers_for(cfg):
     if cfg.get("extra_month_col"):
@@ -607,6 +613,7 @@ def to_smd_row(row, placement, center):
     out.append(0)                   # 64: BOM SMD
     out.append("-")                 # 65: توضیحات
     out += [r[53], r[54]]           # 66-67: حد و هدف عظام
+    out.append(r[55] if len(r) > 55 else "-")   # 68: شماره سفارش تولید
     # 33=عیب یابی, 34=رفع عیب, 35=تست مجدد
     if is_prod:
         out[33] = out[34] = out[35] = 0
@@ -621,7 +628,7 @@ def to_smd_row(row, placement, center):
 def insert_month(row_list, month_value="-"):
     return [row_list[0], month_value] + row_list[1:]
 def make_row(cfg, grp, date, shift, code, prod_name, station,
-             dc, desc, cnt, total, extra):
+             dc, desc, cnt, total, extra, order=None):
     g = grp.get(code)
     if g is not None:
         # کد در جدول گروه‌بندی پیدا شد (مثل VLOOKUP: مقدار خالی می‌ماند خالی)
@@ -692,6 +699,7 @@ def make_row(cfg, grp, date, shift, code, prod_name, station,
         "-",
         CONST_LIMIT,
         CONST_TARGET,
+        s(order) or "-",            # شماره سفارش تولید (ستون پایانی)
     ]
     return row
 def quality_extra(r):
@@ -982,10 +990,13 @@ def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False, an
             continue
         shift = s(r.get("شیفت")) if cfg["defect_source"] == "defect" else "-"
         extra = quality_extra(r) if cfg["defect_source"] == "quality" else None
+        # شماره سفارش تولید: مبنای تشخیص این‌که عیبی که در جامع کیفیت تحلیل
+        # شده، در سند بازرسی تکرار نشود (الویت با جامع کیفیت)
+        order_no = s(r.get("شماره سفارش تولید")) or "-"
         row = make_row(cfg, grp, date, shift, code,
                        s(r.get("نام محصول") or r.get("نام کالا")),
                        station_for(cfg, source_row, cfg["defect_source"] == "quality"),
-                       dc, desc, cnt, 0, extra)
+                       dc, desc, cnt, 0, extra, order=order_no)
         if cfg.get("extra_month_col"):
             row = insert_month(row)
             row = to_smd_row(row, extra.get("placement") if extra else None,
@@ -1024,7 +1035,7 @@ def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False, an
             pshift = ""
         row = make_row(cfg, grp, date, pshift, code,
                        s(r.get("نام کالا")), station_val,
-                       "-", "-", cfg.get("prod_cnt", 0), total, None)
+                       "-", "-", cfg.get("prod_cnt", 0), total, None, order="-")
         if cfg.get("prod_branch") == "-":
             row[13] = "-"
         if cfg.get("extra_month_col"):
@@ -1042,7 +1053,7 @@ def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False, an
                                 s(r.get("نام کالا")), station_val,
                                 cfg.get("scrap_defect_code", "ضایعات"),
                                 cfg.get("scrap_defect_desc", "ضایعات"),
-                                scrap, 0, None)
+                                scrap, 0, None, order="-")
                 if cfg.get("prod_branch") == "-":
                     srow[13] = "-"
                 rows.append((code, date_key(date), seq, srow))
@@ -1057,9 +1068,14 @@ def build_sheet(cfg, quality, defect, prod, grp, history, month, dedup=False, an
 def check_counts(quality, log=print):
     """بررسی درستیِ شمارش عیب‌ها در فایل «اطلاعات جامع کیفیت».
 
-    قاعده: برای هر (شماره سفارش، کد محصول، کد عیب)، جمعِ ستون
-    «تعداد عیب مربوطه» باید برابرِ «تعداد عیب» باشد (ستون «تعداد عیب»
-    کلِ عیبِ همان ردیف/گروه است و جمع‌زدن آن باعث چندبرابر شدن آمار می‌شود).
+    قاعدهٔ شما: برای هر (شماره سفارش، کد محصول، کد عیب)، جمعِ ستون
+    «تعداد عیب مربوطه» باید برابرِ یکی از خانه‌های ستون «تعداد عیب» باشد.
+    دو الگوی ثبت در فایل دیده می‌شود:
+      الف) تقسیمی: یک خانهٔ «تعداد عیب» (مثلاً ۱۰) و چند ردیف با مربوطهٔ
+         ۲ و ۶ و ۱ و ۱ — جمع مربوطه = همان تعداد عیب (۱۰).
+      ب) مستقل: هر ردیف عددِ خودش را دارد (مثلاً ۲ و ۲ و ۳) — در این حالت
+         جمع مربوطه = جمع تعداد عیبِ همان ردیف‌ها.
+    ستون «تعداد عیب» هیچ‌وقت نباید جمع زده شود (چند برابر می‌شود).
     """
     groups = {}
     for r in quality:
@@ -1069,33 +1085,39 @@ def check_counts(quality, log=print):
         key = defect_key(r)
         if key is None:
             continue
-        g = groups.setdefault(key, {"rel": 0.0, "tot": [], "rows": 0})
+        g = groups.setdefault(key, {"rel": 0.0, "tots": [], "rows": 0})
         g["rel"] += n(r.get("تعداد عیب مربوطه"))
-        g["tot"].append(n(r.get("تعداد عیب")))
+        g["tots"].append(n(r.get("تعداد عیب")))
         g["rows"] += 1
-    matched = mismatched = 0
+    split_ok = independent_ok = unknown = 0
     examples = []
     for key, g in groups.items():
-        tots = [v for v in g["tot"] if v]
-        ok = bool(tots) and any(abs(g["rel"] - v) < 1e-6 for v in tots)
-        if ok:
-            matched += 1
+        tots = [v for v in g["tots"] if v]
+        if tots and any(abs(g["rel"] - v) < 1e-6 for v in tots):
+            split_ok += 1                       # الگوی الف: جمع = یکی از خانه‌ها
+        elif abs(g["rel"] - sum(tots)) < 1e-6:
+            independent_ok += 1                 # الگوی ب: هر ردیف عدد مستقل
         else:
-            mismatched += 1
+            unknown += 1
             if len(examples) < 8:
                 examples.append((key, g["rel"], tots, g["rows"]))
     total_rel = sum(g["rel"] for g in groups.values())
+    total_col = sum(sum(g["tots"]) for g in groups.values())
     log("\n========== بررسی شمارش عیب‌ها (جامع کیفیت) ==========")
     log(f"  گروه‌های (سفارش، محصول، کد عیب): {len(groups)}")
     log(f"  جمع «تعداد عیب مربوطه» (مبنای آمار): {total_rel:,.0f}")
-    log(f"  گروه‌هایی که جمعِ مربوطه با «تعداد عیب» برابر است: {matched}")
-    log(f"  گروه‌های متفاوت (هر ردیف عددِ مستقل دارد): {mismatched}")
+    log(f"  جمع ستون «تعداد عیب» (اشتباه اگر جمع شود): {total_col:,.0f}"
+        + (f"  ←  {total_col / total_rel:.1f} برابر" if total_rel else ""))
+    log(f"  الف) جمعِ مربوطه = یکی از خانه‌های تعداد عیب: {split_ok} گروه")
+    log(f"  ب)   هر ردیف عدد مستقل (جمع مربوطه = جمع تعداد عیب): {independent_ok} گروه")
+    log(f"  نامشخص (هیچ‌کدام): {unknown} گروه")
     for key, rel, tots, rows in examples:
         log(f"        - سفارش {key[0]} | محصول {key[1]} | عیب {key[2]}: "
             f"جمع مربوطه={rel:g} | تعداد عیبِ ردیف‌ها={tots} | ردیف‌ها={rows}")
     log("  نکته: مبنای شمارش همیشه «تعداد عیب مربوطه» است؛ جمع‌زدن ستون "
         "«تعداد عیب» آمار را چند برابر نشان می‌دهد.")
-    return {"groups": len(groups), "matched": matched, "mismatched": mismatched, "total": total_rel}
+    return {"groups": len(groups), "split": split_ok, "independent": independent_ok,
+            "unknown": unknown, "total": total_rel, "total_col": total_col}
 
 
 def style_sheet(ws, ncols):
