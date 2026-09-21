@@ -14,6 +14,7 @@ import * as esbuild from 'esbuild';
 
 import { getDb, ready as dbReady, getSettings, RAW_DIR, ROOT } from './db.mjs';
 import { parseFilters } from './filters.mjs';
+import { checkDefectCounts } from './countcheck.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
   productionSummary, productionTrend, productionBreakdown, meta, times, matrix, DIMENSIONS,
@@ -58,10 +59,23 @@ for (const source of sources) {
   put(`/api/matrix?source=${source}&row=final_group&col=defect_group&rows=8&cols=5`, matrix(f, source, 'final_group', 'defect_group', 8, 5));
   put(`/api/matrix?source=${source}&row=product&col=defect&rows=10&cols=6`, matrix(f, source, 'product', 'defect', 10, 6));
   put(`/api/matrix?source=${source}&row=product_unified&col=stage&rows=15&cols=8`, matrix(f, source, 'product_unified', 'stage', 15, 8));
+  // انتخاب‌گر محصول در صفحهٔ حین تولید: فهرست محصولات یکپارچه + ماتریسِ هر کدام
+  put(`/api/breakdown?source=${source}&dim=product_unified&limit=12`, breakdown(f, source, 'product_unified', 12));
+  for (const prod of breakdown(f, source, 'product_unified', 12)) {
+    const pf2 = { ...f, product_unified: [prod.key] };
+    put(`/api/matrix?source=${source}&row=defect&col=stage&rows=12&cols=8&product_unified=${encodeURIComponent(prod.key)}`,
+      matrix(pf2, source, 'defect', 'stage', 12, 8));
+  }
   put(`/api/records?source=${source}&page=1&size=500&sort=defect_qty&dir=DESC`,
     { ...records(f, source, { page: 1, size: 500, sort: 'defect_qty', dir: 'DESC' }), columns: recordColumns(source) });
   // تحلیل گام‌به‌گام (دریل‌داون) برای کل بازه
   put(`/api/drill?source=${source}`, drillTree(f, source));
+}
+// بررسی شمارش عیب‌های فایل جامع کیفیت (نتیجه در فایل آفلاین هم دیده می‌شود)
+try {
+  put('/api/admin/check-counts', await checkDefectCounts(RAW_DIR));
+} catch (err) {
+  console.log('  (بررسی شمارش در دسترس نیست: ' + (err.message || err) + ')');
 }
 put('/api/times?source=inprocess&dim=station&limit=10', times(parseFilters({ source: 'inprocess' }), 'station', 10));
 put('/api/pfmea?source=inprocess&limit=60', pfmea(parseFilters({ source: 'inprocess' }), 60));

@@ -10,7 +10,7 @@ export const LIST_FILTERS = [
   'station', 'process_domain', 'defect_code', 'defect_group',
   'cause_6m', 'shift', 'repair_action', 'supplier', 'part_family',
   'failure_mode', 'operation', 'work_center', 'product_combined',
-  'category', 'stage'
+  'category', 'stage', 'product_unified'
 ];
 
 export function parseList(value) {
@@ -50,6 +50,7 @@ function listClause(alias, field, values, where, params, col) {
 const PRODUCT_FIELDS = [
   ['category', 'category'],
   ['stage', 'stage'],
+  ['product_unified', 'unified_name'],
   ['final_group', 'final_group'],
   ['product_family', 'product_family'],
   ['product_combined', 'product_combined'],
@@ -70,20 +71,20 @@ const DEFECT_FIELDS = [
 const SOURCE_COLUMNS = {
   inprocess: new Set([
     'final_group', 'product_family', 'product_combined', 'product_code',
-    'category', 'stage',
+    'category', 'stage', 'product_unified',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'cause_6m', 'repair_action', 'supplier', 'part_family', 'failure_mode',
     'report', 'repair_desc'
   ]),
   inspection: new Set([
     'final_group', 'product_family', 'product_combined', 'product_code',
-    'category', 'stage',
+    'category', 'stage', 'product_unified',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'shift', 'operation', 'report', 'repair_desc'
   ]),
   polymer: new Set([
     'final_group', 'product_family', 'product_combined', 'product_code',
-    'category', 'stage',
+    'category', 'stage', 'product_unified',
     'station', 'process_domain', 'defect_code', 'defect_group',
     'report', 'repair_desc', 'shift'
   ])
@@ -164,6 +165,7 @@ export function productionWhere(f, alias = 'p') {
   const prodfields = [
     ['category', 'category'],
     ['stage', 'stage'],
+    ['product_unified', 'unified_name'],
     ['final_group', 'final_group'],
     ['product_family', 'product_family'],
     ['product_code', 'product_code'],

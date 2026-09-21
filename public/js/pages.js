@@ -304,6 +304,7 @@ export const management = {
 };
 
 /* ============================================================ تحلیل حین تولید */
+let productDS = null;      // محصول انتخاب‌شده در جدول «کد عیب × مرحله»
 export const inprocess = {
   id: 'inprocess',
   title: 'تحلیل عیوب حین تولید',
@@ -313,7 +314,7 @@ export const inprocess = {
     state.source = 'inprocess';
     root.innerHTML = loadingCard();
     const [s, tr, defectBd, stationBd, domainBd, causeBd, partFamBd, partBd, supplierBd, operatorBd,
-      failureBd, repairBd, processBd, reportBd, repairNotesBd, matrix, matrixPS, timesBd] = await Promise.all([
+      failureBd, repairBd, processBd, reportBd, repairNotesBd, matrix, matrixPS, productUBd, timesBd] = await Promise.all([
       get('/api/summary'),
       get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 15 }),
@@ -331,6 +332,7 @@ export const inprocess = {
       get('/api/breakdown', { dim: 'repair_desc', limit: 15 }),
       get('/api/matrix', { row: 'defect', col: 'station', rows: 12, cols: 8 }),
       get('/api/matrix', { row: 'product_unified', col: 'stage', rows: 15, cols: 8 }),
+      get('/api/breakdown', { dim: 'product_unified', limit: 12 }),
       get('/api/times', { dim: 'station', limit: 8 })
     ]);
 
@@ -438,9 +440,57 @@ export const inprocess = {
           body: matrixTable(matrixPS, { rowHeader: 'محصول (یکپارچه)' })
         })}
       `)}
+      ${grid(1, cardShell({
+        title: 'یک محصول، یک عیب، چند مرحله',
+        subtitle: 'محصول را انتخاب کنید تا ببینید هر کد عیبِ آن (مثل اتصالی) چند مورد در SMD، چند مورد در مونتاژ/QV، تکمیل کاری و کنترل نهایی ثبت شده است',
+        info: 'product_defect_stage',
+        body: `
+          <div class="row-actions">
+            <label class="hint" for="ip-product">محصول:</label>
+            <select id="ip-product" class="input" style="min-width:280px">
+              ${productUBd.map((p) => `<option value="${escapeHtml(p.key)}">${escapeHtml(p.label)} — ${faInt(p.defects)} عیب</option>`).join('')}
+            </select>
+            <button class="btn btn-ghost" id="ip-product-csv">خروجی CSV</button>
+          </div>
+          <div id="ip-matrix-ds">${loadingCard()}</div>`
+      }))}
     `;
 
     wireSeg(root, 'ip-period', (g) => { state.trendGroup = g; rerender(inprocess, root); });
+
+    // انتخاب محصول → جدول «کد عیب × مرحله» برای همان محصول
+    productDS = productUBd[0]?.key || null;
+    const drawDS = async () => {
+      const box = root.querySelector('#ip-matrix-ds');
+      if (!box) return;
+      box.innerHTML = loadingCard();
+      try {
+        const m = await get('/api/matrix', { row: 'defect', col: 'stage', rows: 12, cols: 8, product_unified: productDS });
+        box.innerHTML = (m.rows.length && m.cols.length)
+          ? matrixTable(m, { rowHeader: 'کد عیب' })
+          : emptyCard('برای این محصول در این بازه داده‌ای نیست');
+      } catch (e) {
+        box.innerHTML = emptyCard(String(e.message || e));
+      }
+    };
+    const sel = root.querySelector('#ip-product');
+    if (sel) {
+      sel.value = productDS || '';
+      sel.addEventListener('change', () => { productDS = sel.value; drawDS(); });
+    }
+    const csvBtn = root.querySelector('#ip-product-csv');
+    if (csvBtn) csvBtn.addEventListener('click', async () => {
+      const m = await get('/api/matrix', { row: 'defect', col: 'stage', rows: 12, cols: 8, product_unified: productDS });
+      const rows = [['کد عیب', ...m.cols.map((c) => c.label)]];
+      for (const r of m.rows) {
+        rows.push([r.label, ...m.cols.map((c) => {
+          const cell = m.cells.find((x) => x.r === r.key && x.c === c.key);
+          return cell ? String(cell.v) : '';
+        })]);
+      }
+      downloadCsv(`matrix-${productDS || 'product'}.csv`, rows);
+    });
+    drawDS();
     if (tr.length) trendCombo(root.querySelector('#ip-trend'), tr, { defectLabel: 'تعداد عیوب', onClick: trendDrill(inprocess, root) });
     else root.querySelector('#ip-trend').innerHTML = emptyCard();
     pareto(root.querySelector('#ip-pareto'), defectBd, { limit: 15 });
@@ -812,10 +862,11 @@ export const admin = {
   roles: ['admin'],
   async render(root) {
     root.innerHTML = loadingCard();
-    const [files, users, settings] = await Promise.all([
+    const [files, users, settings, counts] = await Promise.all([
       api('/api/admin/files'),
       api('/api/admin/users'),
-      api('/api/admin/settings')
+      api('/api/admin/settings'),
+      api('/api/admin/check-counts').catch(() => null)
     ]);
 
     const fileRows = files.files.map((f) => {
@@ -833,8 +884,40 @@ export const admin = {
       };
     });
 
+    const countsBody = () => {
+      if (!counts || !counts.ok) {
+        return `<div class="explain">${counts && counts.error ? escapeHtml(counts.error) : 'فایل «اطلاعات جامع کیفیت» در پوشهٔ داده‌ها نیست یا بررسی ممکن نشد.'}</div>`;
+      }
+      return `
+        <div class="kpi-row">
+          ${kpiCard({ label: 'جمع «تعداد عیب مربوطه»', value: faInt(counts.sumRelated), unit: 'مورد', info: 'defect_count', hint: 'مبنای آمار' })}
+          ${kpiCard({ label: 'جمع ستون «تعداد عیب»', value: faInt(counts.sumTotalCol), unit: 'مورد', tone: 'danger', hint: counts.factor ? `${counts.factor} برابر — جمع‌زدن این ستون اشتباه است` : '' })}
+          ${kpiCard({ label: 'ردیف‌های تحلیل‌نشده', value: faInt(counts.rowsUnanalyzed), unit: 'ردیف', tone: 'warn', hint: 'بدون «تعداد عیب مربوطه» — در آمار نمی‌آیند' })}
+        </div>
+        <div class="explain">
+          بررسی برای <b>${escapeHtml(counts.file)}</b> روی ${faInt(counts.groups)} گروه (سفارش، محصول، کد عیب):
+          <ul>
+            <li><b>${faInt(counts.split)}</b> گروه: جمعِ «تعداد عیب مربوطه» برابرِ یکی از خانه‌های «تعداد عیب» ✅</li>
+            <li><b>${faInt(counts.independent)}</b> گروه: هر ردیف عدد مستقل دارد (جمعِ مربوطه = جمعِ تعداد عیب) ✅</li>
+            <li><b>${faInt(counts.unknown)}</b> گروه: ناهماهنگی در خودِ فایل (نمونه‌ها پایین)</li>
+          </ul>
+        </div>
+        ${(counts.unknownExamples || []).length ? dataTable({
+          columns: { order: 'شماره سفارش', code: 'کد محصول', defect: 'کد عیب', related: 'جمع مربوطه', totals: 'تعداد عیبِ ردیف‌ها', rows: 'ردیف‌ها' },
+          rows: counts.unknownExamples.map((u) => ({ order: u.order || '—', code: u.code, defect: u.defect, related: u.related, totals: (u.totals || []).join('، '), rows: u.rows })),
+          maxHeight: '200px'
+        }) : ''}
+      `;
+    };
+
     root.innerHTML = `
       ${grid(2, `
+        ${cardShell({
+          title: 'بررسی شمارش عیب‌ها (جامع کیفیت)',
+          subtitle: 'آیا جمع «تعداد عیب مربوطه» هر سفارش با ستون «تعداد عیب» می‌خواند؟',
+          info: 'defect_count',
+          body: countsBody()
+        })}
         ${cardShell({
           title: 'به‌روزرسانی داده‌ها',
           subtitle: 'فایل اکسل جدید را بارگذاری کنید یا همه فایل‌های پوشه را دوباره بخوانید',
@@ -1289,7 +1372,12 @@ export const guide = {
                     یک ماهیت داشتند (برنچِ الکترونیک = ELE، پلیمر = POL، EMS = EMS).</li>
                 <li><b>نام محصول یکپارچه:</b> یک محصول چند کد دارد (هر کد یک مرحله). جدول
                     «عیوب هر محصول به تفکیک مرحله» نشان می‌دهد عیوبِ آن محصول چند تا در SMD،
-                    چند تا در مونتاژ/QV، تکمیل کاری و کنترل نهایی بوده است.</li>
+                    چند تا در مونتاژ/QV، تکمیل کاری و کنترل نهایی بوده است؛ و جدول
+                    «یک محصول، یک عیب، چند مرحله» نشان می‌دهد مثلاً «اتصالیِ» همان محصول
+                    چند مورد در SMD و چند مورد در QV ثبت شده است.</li>
+                <li><b>بررسیِ خودکارِ این قاعده‌ها</b> در صفحهٔ <b>مدیریت داده و کاربران</b>
+                    (کارتِ «بررسی شمارش عیب‌ها») هر بار روی فایل جامع کیفیت اجرا می‌شود و
+                    نشان می‌دهد جمعِ «تعداد عیب مربوطه» با ستون «تعداد عیب» می‌خواند یا نه.</li>
               </ol>
             </div>`
         }))}

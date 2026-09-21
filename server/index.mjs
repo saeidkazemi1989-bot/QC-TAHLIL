@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { getDb, ready as dbReady, getSettings, setSetting, RAW_DIR, ROOT } from './db.mjs';
 import { runImport } from './etl.mjs';
 import { parseFilters } from './filters.mjs';
+import { checkDefectCounts } from './countcheck.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
   productionSummary, productionTrend, productionBreakdown, meta, DIMENSIONS, matrix, times,
@@ -274,6 +275,17 @@ app.delete('/api/admin/files/:name', requireAuth, requireRole('admin'), (req, re
   db.prepare('DELETE FROM fact_production WHERE src_file = ?').run(name);
   db.prepare('DELETE FROM import_file WHERE file_name = ?').run(name);
   res.json({ ok: true });
+});
+
+/** بررسی شمارش عیب‌های فایل جامع کیفیت (تعداد عیب مربوطه در برابر تعداد عیب) */
+app.get('/api/admin/check-counts', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await checkDefectCounts(RAW_DIR);
+    if (!result.ok) return res.status(404).json(result);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
 });
 
 app.get('/api/admin/users', requireAuth, requireRole('admin'), (req, res) => {
