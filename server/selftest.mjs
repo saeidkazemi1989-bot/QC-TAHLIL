@@ -8,6 +8,7 @@
  */
 import { ready } from './db.mjs';
 import * as A from './analytics.mjs';
+import * as I from './insights.mjs';
 import { parseFilters } from './filters.mjs';
 await ready;
 
@@ -64,6 +65,28 @@ for (const source of ['inprocess', 'inspection', 'polymer']) {
     for (const [name, fn] of calls) {
       try { fn(); pass += 1; } catch (e) { fails.push(`${label} | ${name}: ${e.message}`); }
     }
+  }
+}
+// تحلیلگر خودکار: علاوه بر اجرا، ساختار خروجی هم بررسی می‌شود
+for (const source of ['inprocess', 'inspection', 'polymer']) {
+  for (const combo of [{}, { from: '1405/05/01', to: '1405/05/31' }, { category: 'الکترونیک,EMS' }]) {
+    const f = parseFilters({ source, ...combo });
+    const label = `insights ${source} ${JSON.stringify(combo)}`;
+    try {
+      const r = I.insights(f, source);
+      pass += 1;
+      const problems = [];
+      if (!r.headline || !r.headline.narrative) problems.push('headline.narrative خالی');
+      if (!Array.isArray(r.alarms)) problems.push('alarms آرایه نیست');
+      if (r.alarms.some((a) => !a.title || !a.body || !a.action || !a.drill || !a.severity_label)) problems.push('آلارم ناقص');
+      if (r.headline?.kpis?.defects > 0 && !r.top_repair.length) problems.push('top_repair خالی');
+      if (r.top_repair.some((x) => !x.story || !(x.action || []).length || !x.products || !x.stages || !x.window)) problems.push('ردیف TOP ناقص');
+      if (!r.sources_overview || r.sources_overview.length !== 3) problems.push('sources_overview ناقص');
+      if (!r.basis || !r.basis.label || !r.basis.note) problems.push('basis ناقص');
+      if ((r.focus || []).some((x) => !x.product || !x.subject || !x.drill)) problems.push('focus ناقص');
+      if ((r.actions || []).some((a) => !a.text || !a.title)) problems.push('actions ناقص');
+      if (problems.length) fails.push(`${label} | ${problems.join('، ')}`); else pass += 1;
+    } catch (e) { fails.push(`${label}: ${e.message}`); }
   }
 }
 // تولید

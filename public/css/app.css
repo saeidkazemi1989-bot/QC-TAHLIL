@@ -343,3 +343,149 @@ a { color: var(--brand); text-decoration: none; }
 .toast-error { background: var(--danger); }
 
 details summary { cursor: pointer; }
+
+/* ============================================================ تحلیلگر خودکار */
+.analyst-head .card-body { padding-top: 12px; }
+
+.verdict-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  align-items: center;
+  border-radius: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: #fbfdff;
+}
+.verdict-badge {
+  grid-row: span 2;
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 999px;
+  padding: 8px 16px;
+  white-space: nowrap;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+.verdict-text { margin: 0; font-size: 14px; color: var(--ink-2); line-height: 2; }
+.verdict-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+.verdict-head.tone-danger { background: rgba(192,80,77,.07); border-color: rgba(192,80,77,.3); }
+.verdict-head.tone-danger .verdict-badge { background: var(--danger); color: #fff; }
+.verdict-head.tone-warn { background: rgba(224,138,46,.09); border-color: rgba(224,138,46,.32); }
+.verdict-head.tone-warn .verdict-badge { background: var(--warn); color: #fff; }
+.verdict-head.tone-ok { background: rgba(63,158,120,.09); border-color: rgba(63,158,120,.32); }
+.verdict-head.tone-ok .verdict-badge { background: var(--ok); color: #fff; }
+.verdict-head.tone-muted .verdict-badge { background: #e7ecf3; color: var(--ink-2); }
+
+.sev-chip, .sev-badge {
+  display: inline-block;
+  font-size: 11.5px;
+  border-radius: 999px;
+  padding: 1px 10px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.sev-chip b { font-size: 12px; }
+.sev-critical, .sev-critical.sev-badge { background: rgba(163,39,31,.12); color: #8f231b; border-color: rgba(163,39,31,.3); }
+.sev-high     { background: rgba(192,80,77,.12); color: #a33b38; border-color: rgba(192,80,77,.3); }
+.sev-medium   { background: rgba(224,138,46,.14); color: #9a5c12; border-color: rgba(224,138,46,.34); }
+.sev-low      { background: rgba(120,140,160,.14); color: #4c5b6b; border-color: rgba(120,140,160,.3); }
+.sev-info     { background: var(--brand-soft); color: var(--brand-dark); border-color: rgba(47,111,179,.3); }
+.sev-good     { background: rgba(63,158,120,.14); color: #2c7a5b; border-color: rgba(63,158,120,.32); }
+
+/* کلیاتِ فوری */
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.quick-item {
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--brand);
+  border-radius: 10px;
+  background: #fff;
+  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.quick-item small { font-size: 11.5px; color: var(--muted); }
+.quick-item b { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.7; }
+.quick-item.tone-danger { border-inline-start-color: var(--danger); }
+.quick-item.tone-warn { border-inline-start-color: var(--warn); }
+.quick-item.tone-ok { border-inline-start-color: var(--ok); }
+
+/* کارت آلارم */
+#an-alarms { display: flex; flex-direction: column; gap: 10px; }
+.alarm {
+  border: 1px solid var(--line);
+  border-inline-start: 5px solid var(--brand);
+  border-radius: 12px;
+  padding: 10px 14px 8px;
+  background: #fff;
+}
+.alarm.sev-critical { border-inline-start-color: #a3271f; background: rgba(163,39,31,.035); }
+.alarm.sev-high { border-inline-start-color: var(--danger); background: rgba(192,80,77,.035); }
+.alarm.sev-medium { border-inline-start-color: var(--warn); background: rgba(224,138,46,.04); }
+.alarm.sev-low { border-inline-start-color: #8c9bab; }
+.alarm.sev-good { border-inline-start-color: var(--ok); background: rgba(63,158,120,.045); }
+.alarm-top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.alarm-kind { font-size: 11.5px; color: var(--muted); }
+.alarm-flag { font-size: 11px; background: var(--ink); color: #fff; border-radius: 999px; padding: 0 8px; }
+.alarm-title { font-size: 14.5px; margin: 4px 0 2px; }
+.alarm-body { font-size: 13px; color: var(--ink-2); margin: 0; line-height: 1.95; }
+.alarm-ev { display: flex; gap: 6px; flex-wrap: wrap; margin: 7px 0 4px; }
+.alarm-ev .ev { font-size: 11.5px; background: #f2f6fb; border: 1px solid var(--line); border-radius: 8px; padding: 1px 8px; color: var(--ink-2); }
+.alarm-ev .ev b { color: var(--muted); font-weight: 500; }
+.alarm-foot { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 4px; }
+.alarm-action { font-size: 12.5px; color: var(--ink-2); flex: 1 1 320px; }
+.alarm-drill { white-space: nowrap; }
+
+/* پروندهٔ هر موردِ TOP 10 */
+.top-details { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.top-item { border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.top-item > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  font-size: 13.5px;
+}
+.top-item > summary::-webkit-details-marker { display: none; }
+.top-item > summary:hover { background: #f6fafe; }
+.top-item[open] > summary { border-bottom: 1px dashed var(--line); }
+.ti-rank { background: var(--brand); color: #fff; border-radius: 8px; width: 24px; height: 24px; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.ti-num { color: var(--ink-2); font-size: 12.5px; }
+.ti-trend { margin-inline-start: auto; font-size: 12px; color: var(--muted); }
+.ti-body { padding: 10px 12px; }
+.ti-story { font-size: 12.5px; color: var(--brand-dark); background: var(--brand-soft); border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; }
+.ti-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; font-size: 12.5px; }
+.ti-grid > div { border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; background: #fbfdff; }
+.ti-grid small { display: block; color: var(--muted); font-size: 11px; }
+.ti-actions { margin-top: 8px; font-size: 12.5px; color: var(--ink-2); }
+.ti-actions ul { margin: 4px 0 0; padding-inline-start: 18px; }
+
+/* فهرست اقدام‌ها */
+.action-list { margin: 0; padding-inline-start: 20px; font-size: 13.5px; }
+.action-list li { margin-bottom: 8px; padding-inline-start: 4px; }
+.action-list li b { display: block; color: var(--ink); }
+.action-list li span { color: var(--ink-2); font-size: 12.5px; }
+.action-list li.sev-critical::marker, .action-list li.sev-high::marker { color: var(--danger); }
+.action-list li.sev-medium::marker { color: var(--warn); }
+
+/* آلارم‌های کوچک در صفحهٔ اول */
+.mini-alarms { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.mini-alarms li { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-2); border-inline-start: 3px solid var(--line); padding-inline-start: 8px; }
+.mini-alarms li span { font-size: 11px; border-radius: 999px; padding: 0 8px; background: #eef2f7; color: var(--ink-2); white-space: nowrap; }
+.mini-alarms li.sev-critical { border-inline-start-color: #a3271f; }
+.mini-alarms li.sev-critical span { background: rgba(163,39,31,.14); color: #8f231b; }
+.mini-alarms li.sev-high { border-inline-start-color: var(--danger); }
+.mini-alarms li.sev-high span { background: rgba(192,80,77,.14); color: #a33b38; }
+.mini-alarms li.sev-medium { border-inline-start-color: var(--warn); }
+.mini-alarms li.sev-medium span { background: rgba(224,138,46,.16); color: #9a5c12; }
+.mini-alarms li.sev-good { border-inline-start-color: var(--ok); }

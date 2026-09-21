@@ -6,6 +6,7 @@ import { j2d, d2j, formatJalali, parseJalali, toFa, toEn } from './jalali.js';
 
 const PAGE_META = {
   home: { icon: '📊', label: 'نمای کلی', desc: 'خلاصه وضعیت کیفیت' },
+  analyst: { icon: '🧠', label: 'تحلیلگر خودکار', desc: 'آلارم و TOP 10 تعمیرات' },
   drill: { icon: '🧭', label: 'تحلیل گام‌به‌گام', desc: 'روز ← محصول ← عیب ← تعمیرات' },
   management: { icon: '🏛️', label: 'داشبورد مدیریتی', desc: 'روند و مقایسه برای تصمیم‌گیری' },
   inprocess: { icon: '🔧', label: 'تحلیل حین تولید', desc: 'ریشه‌یابی ریز عیوب' },
@@ -431,6 +432,8 @@ function setupInfoLayer() {
 
 /* ------------------------------------------------------------------ آغاز */
 window.addEventListener('hashchange', () => route());
+// صفحه‌هایی که می‌خواهند صفحهٔ جاری را با فیلترهای تازه بازترسیم کنند (بدون تغییر هش)
+document.addEventListener('qc:rerender', () => route(true));
 // صفحه‌ها پس از دریل‌داون (تغییر بازهٔ تاریخ) این رویداد را می‌فرستند
 document.addEventListener('qc:filters-changed', () => {
   // اگر هنوز فراداده بارگذاری نشده (مثلاً نمونهٔ پیش از ورود) کاری انجام نمی‌دهیم

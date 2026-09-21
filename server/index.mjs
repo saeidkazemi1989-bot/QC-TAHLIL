@@ -16,6 +16,7 @@ import { getDb, ready as dbReady, getSettings, setSetting, RAW_DIR, ROOT } from 
 import { runImport } from './etl.mjs';
 import { parseFilters } from './filters.mjs';
 import { checkDefectCounts } from './countcheck.mjs';
+import { insights } from './insights.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
   productionSummary, productionTrend, productionBreakdown, meta, DIMENSIONS, matrix, times,
@@ -35,9 +36,9 @@ app.use(express.urlencoded({ extended: true }));
 // ---------------------------------------------------------------- احراز هویت ساده
 const ROLE_LABELS = { admin: 'مدیر سیستم', executive: 'مدیر ارشد', expert: 'کارشناس کیفیت' };
 const ROLE_PAGES = {
-  admin: ['home', 'drill', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
-  executive: ['home', 'drill', 'management', 'production', 'guide'],
-  expert: ['home', 'drill', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
+  admin: ['home', 'analyst', 'drill', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
+  executive: ['home', 'analyst', 'drill', 'management', 'production', 'guide'],
+  expert: ['home', 'analyst', 'drill', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
 };
 
 function sign(payload) {
@@ -156,6 +157,12 @@ app.get('/api/meta', requireAuth, (req, res) => {
 app.get('/api/summary', requireAuth, (req, res) => {
   const f = parseFilters(req.query);
   res.json(summary(f, f.source));
+});
+
+// تحلیلگر خودکار: کلیات + آلارم‌ها + TOP 10 توضیحات تعمیرات (با محصول و فرآیند)
+app.get('/api/insights', requireAuth, (req, res) => {
+  const f = parseFilters(req.query);
+  res.json(insights(f, f.source));
 });
 
 // تحلیل گام‌به‌گام: روز → محصول → کد عیب → ریز رکوردها (با توضیحات تعمیرات)

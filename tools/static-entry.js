@@ -29,6 +29,7 @@ const EMPTY = {
   '/api/pfmea': [],
   '/api/times': [],
   '/api/records': { rows: [], total: 0, defectsSum: 0, columns: {} },
+  '/api/insights': { headline: null, alarms: [], actions: [], top_repair: [], focus: [], sources_overview: [], basis: null, thresholds: null },
   '/api/production/trend': [],
   '/api/production/breakdown': [],
   '/api/production/summary': { docs: 0, production: 0, scrap: 0, personnel: 0, products: 0, work_centers: 0 }

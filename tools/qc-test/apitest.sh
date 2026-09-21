@@ -22,6 +22,25 @@ done
 PROD=$(curl -s -H "Authorization: Bearer $M" "$BASE/api/breakdown?source=inprocess&dim=product_unified&limit=12" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['key'])")
 t "matrix-ds" "$M" "$BASE/api/matrix?source=inprocess&row=defect&col=stage&rows=12&cols=8&product_unified=$(python3 -c "import urllib.parse;print(urllib.parse.quote('$PROD'))")"
 t "check-counts" "$A" "$BASE/api/admin/check-counts"
+# ---- تحلیلگر خودکار (موتور تحلیل + آلارم‌ها) ----
+for src in inprocess inspection polymer; do
+  t "insights-$src" "$M" "$BASE/api/insights?source=$src"
+  ins=$(curl -s -H "Authorization: Bearer $M" "$BASE/api/insights?source=$src")
+  chk(){ if [ "$(python3 -c "import sys,json;d=json.loads(sys.stdin.read());print(eval(sys.argv[1]))" "$1" <<<"$ins")" = "True" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "❌ insights-$src: $1"; fi; }
+  chk "len(d['headline']['narrative'])>80"
+  chk "len(d['alarms'])>=3"
+  chk "len(d['top_repair'])>=1 and len(d['top_repair'])<=10"
+  chk "len(d['focus'])>=5"
+  chk "len(d['sources_overview'])==3"
+  chk "d['basis']['label'] in ('توضیحات تعمیرات','کد عیب')"
+  chk "all(a.get('title') and a.get('body') and a.get('action') and a.get('drill') for a in d['alarms'])"
+  chk "all(x.get('story') and x.get('action') and x.get('products') is not None and x.get('stages') is not None for x in d['top_repair'])"
+done
+ins_a=$(curl -s -H "Authorization: Bearer $A" "$BASE/api/insights?source=inprocess")
+if python3 -c "import sys,json;d=json.loads(sys.stdin.read());sys.exit(0 if d['basis']['label']=='توضیحات تعمیرات' else 1)" <<<"$ins_a"; then pass=$((pass+1)); else fail=$((fail+1)); echo "❌ insights: پایهٔ حین تولید باید توضیحات تعمیرات باشد"; fi
+if python3 -c "import sys,json;d=json.loads(sys.stdin.read());sys.exit(0 if d['basis']['label']=='کد عیب' else 1)" <<<"$(curl -s -H "Authorization: Bearer $A" "$BASE/api/insights?source=inspection")"; then pass=$((pass+1)); else fail=$((fail+1)); echo "❌ insights: پایهٔ اسناد بازرسی باید کد عیب باشد"; fi
+# با فیلتر تاریخ باید بازه رعایت شود
+t "insights-dated" "$M" "$BASE/api/insights?source=inprocess&from=1405/06/01&to=1405/06/22"
 t "times" "$E" "$BASE/api/times?dim=station&limit=8"
 t "pfmea" "$E" "$BASE/api/pfmea?limit=60"
 t "meta" "$M" "$BASE/api/meta"

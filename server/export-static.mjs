@@ -15,6 +15,7 @@ import * as esbuild from 'esbuild';
 import { getDb, ready as dbReady, getSettings, RAW_DIR, ROOT } from './db.mjs';
 import { parseFilters } from './filters.mjs';
 import { checkDefectCounts } from './countcheck.mjs';
+import { insights } from './insights.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
   productionSummary, productionTrend, productionBreakdown, meta, times, matrix, DIMENSIONS,
@@ -70,6 +71,8 @@ for (const source of sources) {
     { ...records(f, source, { page: 1, size: 500, sort: 'defect_qty', dir: 'DESC' }), columns: recordColumns(source) });
   // تحلیل گام‌به‌گام (دریل‌داون) برای کل بازه
   put(`/api/drill?source=${source}`, drillTree(f, source));
+  // تحلیلگر خودکار (کلیات + آلارم‌ها + TOP 10)
+  put(`/api/insights?source=${source}`, insights(f, source));
 }
 // بررسی شمارش عیب‌های فایل جامع کیفیت (نتیجه در فایل آفلاین هم دیده می‌شود)
 try {
@@ -93,9 +96,9 @@ for (const source of sources) {
 // فراداده و مدیریت (فقط خواندنی)
 const metaInfo = meta();
 const rolePages = {
-  admin: ['home', 'drill', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
-  executive: ['home', 'drill', 'management', 'production', 'guide'],
-  expert: ['home', 'drill', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
+  admin: ['home', 'analyst', 'drill', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'admin', 'guide'],
+  executive: ['home', 'analyst', 'drill', 'management', 'production', 'guide'],
+  expert: ['home', 'analyst', 'drill', 'inprocess', 'inspection', 'pfmea', 'production', 'records', 'guide']
 };
 const roleLabels = { admin: 'مدیر سیستم', executive: 'مدیر ارشد', expert: 'کارشناس کیفیت' };
 const users = db.prepare('SELECT username, display_name, role, active FROM app_user WHERE active = 1 ORDER BY id').all();

@@ -37,10 +37,10 @@ window.eval(bundle);
 await wait(3500);
 window.eval(fs.readFileSync('/home/user/QC-TAHLIL/tools/qc-test/testbundle.js','utf8'));
 console.log('روی بارگذاری مانده؟', window.document.querySelector('.boot') ? 'بله (مشکل)' : 'خیر');
-const order = ['home','drill','management','inprocess','inspection','pfmea','production','records','admin','guide'];
+const order = ['home','analyst','drill','management','inprocess','inspection','pfmea','production','records','admin','guide'];
 for (const src of ['inprocess','polymer']) {
   console.log(`\n—— منبع: ${src} ——`);
-  for (const p of (src === 'polymer' ? ['home','drill','management','records'] : order)) {
+  for (const p of (src === 'polymer' ? ['home','analyst','drill','management','records'] : order)) {
     await window.eval(`(async () => { window.__core.state.source = ${JSON.stringify(src)};
       window.__core.state.filters.source = ${JSON.stringify(src)};
       await window.__PAGES[Object.keys(window.__PAGES).find(k => window.__PAGES[k].id === ${JSON.stringify(p)})].render(document.getElementById('page-root')); })()`);

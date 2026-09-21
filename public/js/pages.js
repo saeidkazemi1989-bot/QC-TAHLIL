@@ -107,7 +107,8 @@ export const home = {
   roles: ['admin', 'executive', 'expert'],
   async render(root) {
     root.innerHTML = loadingCard();
-    const [s, tr, defectBd, stationBd, productBd, causeBd, catBd, stageBd, repairBd] = await Promise.all([
+    const [ins, s, tr, defectBd, stationBd, productBd, causeBd, catBd, stageBd, repairBd] = await Promise.all([
+      get('/api/insights').catch(() => null),
       get('/api/summary'),
       get('/api/trend', { group: state.trendGroup || 'month' }),
       get('/api/breakdown', { dim: 'defect', limit: 12 }),
@@ -130,7 +131,25 @@ export const home = {
         : kpiCard({ label: 'ضایعات ثبت‌شده', value: faInt(s.scrap), unit: 'دستگاه', info: 'scrap_rate', tone: 'muted' })
     ].join('');
 
+    const insCard = ins && ins.headline ? (() => {
+      const sum = analystSummaryCard(ins, { full: false });
+      const topAlarms = (ins.alarms || []).filter((a) => a.priority).slice(0, 3);
+      return grid(1, cardShell({
+        title: '🧠 تحلیلگر خودکار — نتیجه در یک نگاه',
+        subtitle: `کلیات را اول می‌گوید: وضعیت کلی، آلارم‌ها و TOP 5 ${ins.basis?.label || 'توضیحات تعمیرات'} با محصول و فرآیند`,
+        info: 'analyst',
+        className: 'analyst-head',
+        actions: '<a class="btn btn-primary" href="#/analyst">تحلیل کامل و همهٔ آلارم‌ها ←</a>',
+        body: `${sum.verdict}${sum.quick}
+          ${topAlarms.length ? `<div class="explain" style="margin-top:10px"><b>مهم‌ترین آلارم‌ها</b>
+            <ul class="mini-alarms">${topAlarms.map((a) => `<li class="sev-${escapeHtml(a.severity)}"><span>${escapeHtml(a.severity_label)}</span> ${escapeHtml(a.title)}</li>`).join('')}</ul></div>` : ''}
+          <div style="margin-top:8px">${sum.table}</div>`,
+        foot: escapeHtml(ins.headline.narrative)
+      }));
+    })() : '';
+
     root.innerHTML = `
+      ${insCard}
       ${grid(3, kpis, 'kpi-grid')}
       ${grid(1, cardShell({
         title: 'روند تولید، عیوب و PPM در زمان',
@@ -1361,6 +1380,29 @@ export const guide = {
         })}
       `)}
       ${grid(1, cardShell({
+        title: 'تحلیلگر خودکار چه چیزی به شما می‌دهد؟',
+        subtitle: 'صفحهٔ «تحلیلگر خودکار» — نتیجهٔ تحلیل اولِ صفحه است، بدون اینکه دنبال آن بگردید',
+        info: 'analyst',
+        body: `
+            <div class="explain">
+              <p>این صفحه همان کاری را می‌کند که یک کارشناس کیفیت انجام می‌دهد، ولی روی همهٔ داده‌ها و در چند ثانیه:</p>
+              <ol>
+                <li><b>کلیات، اول:</b> وضعیت کلی (بحرانی / نیازمند توجه / پایدار)، یک پاراگراف نتیجهٔ تحلیل
+                    (تعداد عیب، PPM، روندِ دورهٔ اخیر، بزرگ‌ترین موضوع و اینکه در کدام محصول و فرآیند است)
+                    و یک جدولِ «سه منبع داده در یک نگاه».</li>
+                <li><b>آلارم‌ها:</b> هر آلارم می‌گوید <b>چه چیزی</b>، <b>کجا</b> (محصول/فرآیند/ایستگاه)،
+                    <b>چقدر</b> (تعداد، سهم و تغییر نسبت به دورهٔ قبل)، <b>چرا</b> (ریشهٔ 6M، قطعه، RPN)
+                    و <b>چه باید کرد</b>. با دکمهٔ «دیدن رکوردها» مستقیم به همان رکوردها می‌روید.</li>
+                <li><b>TOP 10 توضیحات تعمیرات:</b> با محصول‌ها، فرآیند/مرحله، ایستگاه، کد عیب، ریشهٔ 6M،
+                    خانوادهٔ قطعه، گسترهٔ سفارش‌ها، زمان عیب‌یابی و اقدام پیشنهادیِ هر مورد.</li>
+                <li><b>کانون‌های اقدام:</b> ترکیب «محصول × موضوع» با مرحلهٔ غالب — قابل‌اجراترین فهرست گزارش.</li>
+              </ol>
+              <p><b>نکته:</b> اگر «توضیحات تعمیرات» در یک منبع ثبت نشده باشد (اسناد بازرسی و پلیمر)،
+              تحلیلگر خودش پایهٔ تحلیل را به «کد عیب» تغییر می‌دهد، دلیلش را می‌نویسد و یک آلارم
+              «کیفیت داده» هم برای ثبت‌نشدنِ آن ستون صادر می‌کند.</p>
+            </div>`
+        }))}
+      ${grid(1, cardShell({
         title: 'تحلیلِ درست یعنی چه؟ (تحلیل گام‌به‌گام)',
         subtitle: 'صفحهٔ «تحلیل گام‌به‌گام» دقیقاً همین مسیر را می‌رود',
         info: 'drill',
@@ -1435,5 +1477,393 @@ export const guide = {
   }
 };
 
-export const PAGES = { home, drill, management, inprocess, inspection, pfmea, production, records: recordsPage, admin, guide };
+/* ============================================================ تحلیلگر خودکار کیفیت */
+const SEV_LIST = [
+  ['all', 'همه'], ['critical', 'بحرانی'], ['high', 'مهم'], ['medium', 'متوسط'],
+  ['low', 'کم'], ['good', 'بهبود']
+];
+
+/** رفتن به رکوردهای همان موضوعِ آلارم (با اعمال فیلترها) */
+export function gotoInsight(d) {
+  if (!d) return;
+  const pages = state.user?.pages || [];
+  if (window.__STATIC__) {
+    if (d.source && d.source !== state.source) {
+      state.source = d.source;
+      state.filters = { source: d.source };
+    }
+    document.dispatchEvent(new CustomEvent('qc:rerender'));
+    toast('نسخهٔ تک‌فایل: منبع داده عوض شد؛ برای دریلِ کاملِ فیلترها نسخهٔ سروری را اجرا کنید', 'info');
+    return;
+  }
+  if (d.source) state.source = d.source;
+  state.filters = { source: state.source, ...(d.filters || {}) };
+  document.dispatchEvent(new CustomEvent('qc:filters-changed'));
+  const target = pages.includes('records') ? 'records'
+    : (state.source === 'inprocess' && pages.includes('inprocess')) ? 'inprocess'
+      : pages.includes('inspection') ? 'inspection'
+        : pages.includes('drill') ? 'drill' : 'home';
+  const hash = `#/${target}`;
+  if (location.hash === hash) document.dispatchEvent(new CustomEvent('qc:rerender'));
+  else location.hash = hash;
+}
+
+function alarmHtml(a) {
+  return `<article class="alarm sev-${escapeHtml(a.severity)}" data-sev="${escapeHtml(a.severity)}" data-kind="${escapeHtml(a.kind)}">
+    <div class="alarm-top">
+      <span class="sev-badge">${escapeHtml(a.severity_label || '')}</span>
+      <span class="alarm-kind">${escapeHtml(a.kind_label || '')}</span>
+      ${a.priority ? '<span class="alarm-flag">اولویت‌دار</span>' : ''}
+    </div>
+    <h4 class="alarm-title">${escapeHtml(a.title)}</h4>
+    <p class="alarm-body">${escapeHtml(a.body)}</p>
+    ${(a.evidence && a.evidence.length)
+    ? `<div class="alarm-ev">${a.evidence.map((e) => `<span class="ev"><b>${escapeHtml(e.label)}</b> ${escapeHtml(e.value)}</span>`).join('')}</div>`
+    : ''}
+    <div class="alarm-foot">
+      <span class="alarm-action">🛠 ${escapeHtml(a.action || '')}</span>
+      <button type="button" class="btn btn-ghost alarm-drill">دیدن رکوردها ←</button>
+    </div>
+  </article>`;
+}
+
+/** فهرستِ کوچکِ HTML (برای پنل جزئیات) */
+function topList(list, n = 2) {
+  if (!list || !list.length) return '<span class="muted">—</span>';
+  return list.slice(0, n).map((x) => `${escapeHtml(x.label)} <b>${faInt(x.defects)}</b> (${faDec(x.pct_of_item, 0)}٪)`).join('، ');
+}
+
+/** همان فهرست به‌صورت متن ساده (برای سلولِ جدول که escape می‌شود) */
+function topText(list, n = 2) {
+  if (!list || !list.length) return '—';
+  return list.slice(0, n).map((x) => `${x.label} ${faInt(x.defects)} (${faDec(x.pct_of_item, 0)}٪)`).join('، ');
+}
+
+/** کارتِ خلاصهٔ تحلیلگر (بالای صفحهٔ نمای کلی هم استفاده می‌شود) */
+function analystSummaryCard(r, { full = true } = {}) {
+  const h = r.headline;
+  const counts = h.alarm_counts || {};
+  const chips = [
+    ['بحرانی', counts.critical, 'critical'], ['مهم', counts.high, 'high'],
+    ['متوسط', counts.medium, 'medium'], ['کم', counts.low, 'low'], ['بهبود', counts.good, 'good']
+  ].filter(([, n]) => n > 0)
+    .map(([label, n, sev]) => `<span class="sev-chip sev-${sev}">${label} <b>${faInt(n)}</b></span>`).join('');
+
+  const quick = (h.quick || []).slice(0, full ? 8 : 4).map((q) => `
+    <div class="quick-item ${q.tone ? `tone-${q.tone}` : ''}">
+      <small>${escapeHtml(q.label)}</small>
+      <b>${escapeHtml(q.value)}</b>
+    </div>`).join('');
+
+  const topRows = (r.top_repair || []).slice(0, full ? 10 : 5).map((x) => ({
+    rank: faInt(x.rank),
+    subject: x.label,
+    defects: x.defects,
+    share_pct: x.share,
+    trend: `${x.window.arrow} ${x.window.word}`,
+    product: topText(x.products, 1),
+    stage: topText(x.stages, 1)
+  }));
+
+  return {
+    verdict: `<div class="verdict-head tone-${escapeHtml(h.tone)}">
+        <div class="verdict-badge">${escapeHtml(h.verdict)}</div>
+        <p class="verdict-text">${escapeHtml(h.narrative)}</p>
+        <div class="verdict-chips">${chips}</div>
+      </div>`,
+    quick: `<div class="quick-grid">${quick}</div>`,
+    table: dataTable({
+      columns: {
+        rank: 'رتبه', subject: `بیشترین ${r.basis?.label || 'توضیحات تعمیرات'}`, defects: 'تعداد عیب',
+        share_pct: 'سهم از کل', trend: 'روند اخیر', product: 'محصول اول', stage: 'فرآیند/مرحلهٔ اول'
+      },
+      rows: topRows, maxHeight: full ? '420px' : '260px'
+    }),
+    chips
+  };
+}
+
+export const analyst = {
+  id: 'analyst',
+  title: 'تحلیلگر خودکار کیفیت',
+  subtitle: 'موتور تحلیل مثل یک کارشناس کیفیت: اول کلیات و نتیجهٔ کل، بعد آلارم‌ها و TOP 10 توضیحات تعمیرات با محصول و فرآیند',
+  roles: ['admin', 'executive', 'expert'],
+  sev: 'all',
+  showAll: false,
+  async render(root) {
+    root.innerHTML = loadingCard('تحلیلگر در حال بررسی داده‌ها…');
+    let r;
+    try {
+      r = await get('/api/insights');
+    } catch (err) {
+      root.innerHTML = cardShell({ title: 'تحلیلگر کیفیت', body: `<div class="error-box">${escapeHtml(err.message)}</div>` });
+      return;
+    }
+    if (!r || !r.headline || !r.alarms) {
+      root.innerHTML = cardShell({ title: 'تحلیلگر کیفیت', body: emptyCard('داده‌ای برای تحلیل در این بازه پیدا نشد') });
+      return;
+    }
+    const h = r.headline;
+    const sum = analystSummaryCard(r, { full: true });
+    const basisLabel = r.basis?.label || 'توضیحات تعمیرات';
+    const shown = this.showAll ? r.alarms : r.alarms.slice(0, 12);
+
+    /* --- منبع‌ها: کلیاتِ هر سه گزارش در یک نگاه --- */
+    const srcRows = (r.sources_overview || []).map((x) => ({
+      src: x.label,
+      production: x.production,
+      defects: x.defects,
+      ppm: x.ppm,
+      delta_ppm: x.delta?.ppm ?? null,
+      top: x.top_basis ? `${x.top_basis.label} — ${faInt(x.top_basis.defects)} مورد` : '—',
+      basis: x.basis,
+      product: x.top_product ? x.top_product.label : '—',
+      stage: x.top_stage ? x.top_stage.label : '—'
+    }));
+
+    /* --- جدول‌های پشتیبان --- */
+    const productRows = (r.top_products || []).slice(0, 12).map((p) => ({
+      product: p.label, defects: p.defects, share_pct: p.share, production: p.production,
+      ppm: p.ppm, vs_peers: p.ppm_vs_peers ? `${faDec(p.ppm_vs_peers, 1)}×` : '—',
+      trend: p.window.change === null ? '✦ مورد تازه' : `${p.window.arrow || '■'} ${p.window.word || ''}`
+    }));
+    const focusRows = (r.focus || []).map((x, i) => ({
+      rank: faInt(i + 1), product: x.product, subject: x.subject, defects: x.defects,
+      share_pct: x.share, stage: x.stage || '—', stage_share_pct: x.stage_share
+    }));
+    const chronicRows = (r.chronic || []).slice(0, 12).map((c) => ({
+      product: c.product, subject: c.subject, defects: c.defects, months: c.months
+    }));
+    const escapeRows = (r.escapes || []).slice(0, 10).map((e) => ({
+      code: e.code, defect: e.label, defects: e.defects, stages: e.stage_count,
+      where: (e.stages || []).map((s) => `${s.label} (${faInt(s.defects)})`).join('، ')
+    }));
+    const rpnRows = (r.rpn || []).slice(0, 10).map((x) => ({
+      failure_mode: x.failure_mode, type: x.failure_mode_type, station: x.station,
+      severity: x.severity, occurrence: x.occurrence, detection: x.detection, rpn_max: x.rpn_max, defects: x.defects
+    }));
+    const stageRows = (r.top_stages || []).map((x) => ({ stage: x.label, defects: x.defects, share_pct: x.share }));
+    const stationRows = (r.top_stations || []).slice(0, 10).map((x) => ({ station: x.label, defects: x.defects, share_pct: x.share }));
+    const m6Rows = (r.top_6m || []).map((x) => ({ cause: x.label, defects: x.defects, share_pct: x.share }));
+    const partRows = (r.top_parts || []).filter((x) => x.key !== 'ثبت نشده').slice(0, 8).map((x) => ({ part: x.label, defects: x.defects, share_pct: x.share }));
+
+    root.innerHTML = `
+      ${drillBanner(analyst, root)}
+
+      ${grid(1, cardShell({
+        title: '🧠 نتیجهٔ تحلیل — کلیات اول، بدون گشتن',
+        subtitle: `${sourceNote()} · پایهٔ تحلیل: «${basisLabel}» · بازهٔ مقایسه: ${faInt(r.range?.window_days || 0)} روز اخیر در برابر ${faInt(r.range?.window_days || 0)} روز پیش از آن`,
+        info: 'analyst',
+        className: 'analyst-head',
+        actions: '<button class="btn btn-ghost" id="an-csv-alarms">خروجی آلارم‌ها (CSV)</button>',
+        body: `${sum.verdict}${sum.quick}
+          <div class="explain" style="margin-top:10px">
+            <b>سه منبع داده در یک نگاه</b>
+            ${dataTable({
+              columns: { src: 'منبع گزارش', production: 'تولید', defects: 'عیوب', ppm: 'PPM', delta_ppm: 'تغییر PPM', top: 'بزرگ‌ترین موضوع', basis: 'پایهٔ تحلیل', product: 'بیشترین محصول', stage: 'بیشترین فرآیند' },
+              rows: srcRows, maxHeight: '200px'
+            })}
+          </div>`,
+        foot: r.basis?.note ? escapeHtml(r.basis.note) : ''
+      }))}
+
+      ${grid(1, cardShell({
+        title: `آلارم‌های تحلیلگر (${faInt(r.alarms.length)} مورد)`,
+        subtitle: 'هر آلارم می‌گوید چه چیزی، کجا، چقدر و چرا — و چه اقدامی پیشنهاد می‌شود؛ با «دیدن رکوردها» مستقیم به همان داده‌ها می‌روید',
+        info: 'analyst_alarms',
+        actions: `<div class="seg" id="an-sev">${SEV_LIST.map(([k, l]) => `<button type="button" data-g="${k}" class="${this.sev === k ? 'active' : ''}">${l}</button>`).join('')}</div>`,
+        body: `<div id="an-alarms">${shown.map(alarmHtml).join('') || emptyCard('آلارمی برای این بازه ثبت نشد — وضعیت پایدار است')}</div>
+          ${r.alarms.length > 12 ? `<div class="row-actions"><button class="btn btn-ghost" id="an-more">${this.showAll ? 'نمایش خلاصهٔ آلارم‌ها' : `نمایش همهٔ ${faInt(r.alarms.length)} آلارم`}</button></div>` : ''}`,
+        foot: 'آلارم‌ها با قاعده‌های نسبتی ساخته می‌شوند (به حجم دادهٔ همان بازه بستگی دارند)، نه با عدد ثابت؛ فهرست قاعده‌ها در پایین همین صفحه آمده است.'
+      }))}
+
+      ${grid(1, cardShell({
+        title: `TOP 10 ${basisLabel} — در کدام محصول، در کدام فرآیند`,
+        subtitle: 'رتبه، تعداد، سهم، روندِ دورهٔ اخیر، محصول و فرآیند اصلی، کد عیب و ریشهٔ 6M هر مورد',
+        info: 'analyst_top',
+        actions: '<button class="btn btn-ghost" id="an-csv-top">خروجی Excel (CSV)</button>',
+        body: `<div id="an-top">${sum.table}</div>
+          <div class="chart" id="an-pareto"></div>
+          <div class="explain" style="margin-top:8px"><b>پروندهٔ هر مورد</b> — باز کنید تا جزئیات و اقدام پیشنهادی همان مورد را ببینید:
+          <div class="top-details">
+            ${(r.top_repair || []).map((x) => `
+              <details class="top-item">
+                <summary>
+                  <span class="ti-rank">${faInt(x.rank)}</span>
+                  <b>${escapeHtml(x.label)}</b>
+                  <span class="ti-num">${faInt(x.defects)} عیب · ${faDec(x.share, 1)}٪ کل</span>
+                  <span class="ti-trend">${escapeHtml(x.window.arrow)} ${escapeHtml(x.window.word)}</span>
+                </summary>
+                <div class="ti-body">
+                  <p class="ti-story">${escapeHtml(x.story)}</p>
+                  <div class="ti-grid">
+                    <div><small>محصول‌ها</small>${topList(x.products, 3)}</div>
+                    <div><small>فرآیند/مرحله</small>${topList(x.stages, 3)}</div>
+                    <div><small>ایستگاه</small>${topList(x.stations, 2)}</div>
+                    <div><small>کد عیب</small>${topList(x.codes, 3)}</div>
+                    <div><small>ریشهٔ 6M</small>${topList(x.cause6m, 2)}</div>
+                    <div><small>خانوادهٔ قطعه</small>${topList(x.parts, 2)}</div>
+                    <div><small>اقدام تعمیرات</small>${topList(x.actions, 2)}</div>
+                    <div><small>گستره</small>${faInt(x.orders)} سفارش · ${faInt(x.distinct_products)} محصول · ${faInt(x.active_days)} روز${x.avg_troubleshoot_min ? ` · عیب‌یابی ${faDec(x.avg_troubleshoot_min, 0)} دقیقه` : ''}</div>
+                  </div>
+                  <div class="ti-actions"><b>اقدام پیشنهادی:</b><ul>${(x.action || []).map((a) => `<li>${escapeHtml(a)}</li>`).join('')}</ul></div>
+                  <div class="row-actions"><button class="btn btn-ghost ti-drill">دیدن رکوردهای این مورد ←</button></div>
+                </div>
+              </details>`).join('')}
+          </div></div>`,
+        foot: `ده مورد اول با هم ${faInt((r.top_repair || []).reduce((s, x) => s + x.defects, 0))} عیب را می‌سازند.`
+      }))}
+
+      ${grid(1, cardShell({
+        title: 'اقدام‌های فوری پیشنهادی',
+        subtitle: 'به ترتیب اهمیت آلارم‌ها — از دلِ همان داده‌ها استخراج شده است',
+        info: 'analyst_actions',
+        actions: '<button class="btn btn-ghost" id="an-csv-focus">خروجی کانون‌های اقدام (CSV)</button>',
+        body: `<ol class="action-list">${(r.actions || []).map((a) => `
+            <li class="sev-${escapeHtml(a.severity)}">
+              <b>${escapeHtml(a.title)}</b>
+              <span>${escapeHtml(a.text)}</span>
+            </li>`).join('') || '<li>اقدام فوری لازم نیست — وضعیت پایدار است.</li>'}</ol>`,
+        foot: ''
+      }))}
+
+      ${grid(1, cardShell({
+        title: 'کانون‌های اقدام: کدام موضوع در کدام محصول',
+        subtitle: 'قابل‌اجراترین فهرست: ترکیب «محصول × موضوع» با مرحلهٔ غالبِ هر کدام',
+        info: 'analyst_focus',
+        body: dataTable({
+          columns: { rank: 'رتبه', product: 'محصول', subject: basisLabel, defects: 'تعداد عیب', share_pct: 'سهم از کل', stage: 'مرحلهٔ غالب', stage_share_pct: 'سهم مرحله' },
+          rows: focusRows, maxHeight: '420px'
+        })
+      }))}
+
+      ${grid(2, `
+        ${cardShell({
+          title: 'محصولات پرعیب و PPM آن‌ها',
+          subtitle: `مقایسه با میانهٔ محصولاتِ هم‌حجم (${faInt(r.peer_ppm || 0)}) — نه با میانگین کل`,
+          body: dataTable({
+            columns: { product: 'محصول', defects: 'عیوب', share_pct: 'سهم', production: 'تولید', ppm: 'PPM', vs_peers: 'نسبت به میانه', trend: 'روند اخیر' },
+            rows: productRows, maxHeight: '360px'
+          })
+        })}
+        ${cardShell({
+          title: 'مرحله و ایستگاه',
+          subtitle: 'بارِ کیفیت روی کدام مرحله و ایستگاه است',
+          body: `<div class="chart" id="an-stage"></div>
+            ${dataTable({ columns: { station: 'ایستگاه', defects: 'تعداد عیب', share_pct: 'سهم' }, rows: stageRows.length ? stageRows : stationRows, maxHeight: '220px' })}`
+        })}
+      `)}
+
+      ${grid(2, `
+        ${cardShell({
+          title: 'عیب‌های مزمن (تکرارِ ماهانه)',
+          subtitle: 'ترکیب محصول × موضوع که در چند ماه پیاپی تکرار شده — نیازمند اقدام ریشه‌ای',
+          body: dataTable({ columns: { product: 'محصول', subject: basisLabel, defects: 'تعداد عیب', months: 'ماه‌های درگیر' }, rows: chronicRows, maxHeight: '320px' })
+        })}
+        ${cardShell({
+          title: 'فرار عیب از ایستگاه‌ها',
+          subtitle: 'یک کد عیب که در چند مرحله دیده شده = ضعف کشف در ایستگاه‌های قبلی',
+          body: dataTable({ columns: { code: 'کد', defect: 'شرح عیب', defects: 'تعداد', stages: 'تعداد مراحل', where: 'کجاها' }, rows: escapeRows, maxHeight: '320px' })
+        })}
+      `)}
+
+      ${grid(2, `
+        ${cardShell({
+          title: 'ریشهٔ 6M، قطعه و تامین‌کننده',
+          subtitle: 'علت‌های ثبت‌شده و قطعاتِ درگیر',
+          body: dataTable({ columns: { cause: 'عامل مسبب (6M)', defects: 'تعداد عیب', share_pct: 'سهم' }, rows: m6Rows, maxHeight: '180px' })
+            + dataTable({ columns: { part: 'خانوادهٔ قطعه', defects: 'تعداد عیب', share_pct: 'سهم' }, rows: partRows, maxHeight: '220px' })
+        })}
+        ${cardShell({
+          title: 'ریسک بالای PFMEA (RPN)',
+          subtitle: r.rpn && r.rpn.length ? 'حالت‌های خرابی با RPN بیشینهٔ ۱۵۰ به بالا' : 'این داده فقط در منبع «عیوب حین تولید» وجود دارد',
+          body: dataTable({
+            columns: { failure_mode: 'حالت خرابی', type: 'نوع', station: 'ایستگاه', severity: 'شدت', occurrence: 'وقوع', detection: 'کشف', rpn_max: 'RPN', defects: 'عیوب' },
+            rows: rpnRows, maxHeight: '320px'
+          })
+        })}
+      `)}
+
+      ${grid(1, cardShell({
+        title: 'تحلیلگر چطور کار می‌کند؟',
+        subtitle: 'قاعده‌ها و آستانه‌هایی که برای ساختن آلارم‌ها استفاده شده است',
+        info: 'analyst_rules',
+        body: `<div class="explain">
+          <p>موتور تحلیل روی همان داده‌هایی کار می‌کند که در بقیهٔ صفحه‌ها می‌بینید (با همان قواعدِ شمارشِ «تعداد عیب مربوطه»
+          و اولویتِ جامع کیفیت). برای هر بازه این کارها را انجام می‌دهد:</p>
+          <ol>
+            <li><b>پایهٔ تحلیل را خودش انتخاب می‌کند:</b> اگر «توضیحات تعمیرات» در بیش از ۵۰٪ ردیف‌ها ثبت نشده باشد
+              (مثل اسناد بازرسی و پلیمر)، تحلیل را به «کد عیب» منتقل می‌کند و دلیلش را هم می‌نویسد.</li>
+            <li><b>بازه را به دو پنجرهٔ مساوی تقسیم می‌کند</b> (حداکثر ۳۰ روز) و دورهٔ اخیر را با دورهٔ قبل مقایسه می‌کند
+              تا جهش‌ها و بهبودها دیده شوند.</li>
+            <li><b>آستانه‌ها نسبی‌اند:</b> «قابل توجه» بودنِ یک مورد = ${faInt(r.thresholds?.minCount || 0)} عیب،
+              «جهش» = حداقل ${faInt(r.thresholds?.spikeMin || 0)} عیب افزایش و ۵۰٪ رشد،
+              «مزمن» = تکرار در ۳ ماه، «تمرکز فرآیندی» = بیش از ۶۰٪ در یک مرحله،
+              «محصول پرخطر» = PPM بیش از ۱.۸ برابرِ میانهٔ محصولاتِ هم‌حجم، «ریسک بالا» = RPN بیش از ۲۰۰.</li>
+            <li><b>برای هر آلارم، اقدامِ متناسب با همان ریشه پیشنهاد می‌دهد</b> (جدولِ 6M و مرحلهٔ فرآیند)
+              و مسیرِ رسیدن به رکوردهای همان موضوع را هم می‌سازد.</li>
+            <li><b>ردیف‌های «ضایعات سند عملکرد» در پلیمر</b> به‌عنوان عیبِ تحلیل‌شده آلارم نمی‌گیرند؛ سهمشان جدا گزارش می‌شود.</li>
+          </ol>
+          <p class="hint">زمانِ اجرای این تحلیل: ${faInt(r.took_ms || 0)} میلی‌ثانیه · تعداد پرس‌وجوها: روی ${faInt(r.thresholds?.total || 0)} عیبِ بازه.</p>
+        </div>`
+      }))}
+    `;
+
+    /* --- اتصال رویدادها --- */
+    const filterAlarms = () => {
+      root.querySelectorAll('#an-sev button').forEach((b) => b.classList.toggle('active', b.dataset.g === analyst.sev));
+      root.querySelectorAll('#an-alarms .alarm').forEach((el) => {
+        el.style.display = (analyst.sev === 'all' || el.dataset.sev === analyst.sev) ? '' : 'none';
+      });
+    };
+    filterAlarms();
+    root.querySelectorAll('#an-sev button').forEach((b) => {
+      b.addEventListener('click', () => { analyst.sev = b.dataset.g; filterAlarms(); });
+    });
+
+    const more = root.querySelector('#an-more');
+    if (more) more.addEventListener('click', () => { analyst.showAll = !analyst.showAll; analyst.render(root); });
+
+    root.querySelectorAll('#an-alarms .alarm-drill').forEach((btn, i) => {
+      btn.addEventListener('click', () => gotoInsight(shown[i]?.drill));
+    });
+    root.querySelectorAll('.ti-drill').forEach((btn, i) => {
+      btn.addEventListener('click', () => gotoInsight(r.top_repair[i]?.drill));
+    });
+    root.querySelectorAll('#an-top tbody tr').forEach((tr, i) => {
+      tr.classList.add('drill-row');
+      tr.addEventListener('click', () => gotoInsight(r.top_repair[i]?.drill));
+    });
+
+    const paretoEl = root.querySelector('#an-pareto');
+    if (paretoEl && r.top_repair?.length) {
+      pareto(paretoEl, r.top_repair.map((x) => ({ label: x.label, defects: x.defects, pct: x.share, cumPct: x.cum_share })),
+        { valueName: defectWord(), limit: 10 });
+    }
+    const stageEl = root.querySelector('#an-stage');
+    if (stageEl && r.top_stages?.length) barH(stageEl, r.top_stages, { valueName: defectWord(), limit: 8 });
+
+    root.querySelector('#an-csv-top')?.addEventListener('click', () => downloadCsv(
+      `top10-${basisLabel}.csv`,
+      { rank: 'رتبه', subject: basisLabel, defects: 'تعداد عیب', share: 'سهم از کل ٪', trend: 'روند', product: 'محصول اول', stage: 'فرآیند اول', code: 'کد عیب', m6: 'ریشه 6M', orders: 'سفارش‌ها', action: 'اقدام پیشنهادی' },
+      r.top_repair.map((x) => ({
+        rank: x.rank, subject: x.label, defects: x.defects, share: faDec(x.share, 1), trend: x.window.word,
+        product: x.products[0]?.label || '', stage: x.stages[0]?.label || '', code: x.codes[0]?.label || '',
+        m6: x.cause6m[0]?.label || '', orders: x.orders, action: (x.action || []).join(' | ')
+      }))
+    ));
+    root.querySelector('#an-csv-focus')?.addEventListener('click', () => downloadCsv(
+      'action-focus.csv',
+      { rank: 'رتبه', product: 'محصول', subject: basisLabel, defects: 'تعداد عیب', share: 'سهم ٪', stage: 'مرحلهٔ غالب' },
+      focusRows.map((x) => ({ rank: x.rank, product: x.product, subject: x.subject, defects: x.defects, share: faDec(x.share_pct, 1), stage: x.stage }))
+    ));
+    root.querySelector('#an-csv-alarms')?.addEventListener('click', () => downloadCsv(
+      'alarms.csv',
+      { seq: 'شماره', severity: 'شدت', kind: 'نوع', title: 'عنوان', body: 'توضیح', action: 'اقدام پیشنهادی' },
+      r.alarms.map((a) => ({ seq: a.seq, severity: a.severity_label, kind: a.kind_label, title: a.title, body: a.body, action: a.action }))
+    ));
+  }
+};
+
+export const PAGES = { home, analyst, drill, management, inprocess, inspection, pfmea, production, records: recordsPage, admin, guide };
 export { infoPopoverHtml };
