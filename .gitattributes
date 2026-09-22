@@ -1,0 +1,3 @@
+# فایل‌های دسته‌ایِ ویندوز باید با پایانِ سطرِ CRLF بمانند تا cmd درست اجرا کند
+*.bat text eol=crlf
+*.cmd text eol=crlf

@@ -17,7 +17,7 @@ import { runImport } from './etl.mjs';
 import { parseFilters } from './filters.mjs';
 import { checkDefectCounts } from './countcheck.mjs';
 import { insights } from './insights.mjs';
-import { refreshAll, rebuildFromRaw, pipelineStatus, startWatcher, computeDataVersion, adoptExistingClean, dataDiagnostics } from './pipeline.mjs';
+import { refreshAll, rebuildFromRaw, pipelineStatus, startWatcher, computeDataVersion, adoptExistingClean, dataDiagnostics, installPythonDeps, pythonStatus } from './pipeline.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
   productionSummary, productionTrend, productionBreakdown, meta, DIMENSIONS, matrix, times,
@@ -243,6 +243,18 @@ app.post('/api/admin/upload', requireAuth, requireRole('admin'), upload.single('
     // تبدیل با qc.py (اگر لازم باشد) ← بارگذاری در پایگاه ← به‌روزرسانی داشبورد
     const result = await refreshAll({ reason: `upload:${req.file.filename}` });
     res.json({ ok: result.ok !== false, file: req.file.filename, result });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+/** نصبِ خودکارِ openpyxl (نیازمندیِ ابزار تبدیل) تا کاربر مجبور نباشد خطِ فرمان باز کند */
+app.post('/api/admin/setup-python', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const r = await installPythonDeps();
+    let refreshed = null;
+    if (r.ok) refreshed = await refreshAll({ reason: 'setup-python', forceClean: true });
+    res.json({ ok: r.ok, message: r.message, output: r.output, command: r.command, python: pythonStatus(), result: refreshed });
   } catch (err) {
     res.status(500).json({ error: String(err.message || err) });
   }

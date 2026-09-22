@@ -965,7 +965,11 @@ function pipelineStatusHtml(p) {
     '<div class="pipe-item ' + tone + '"><small>وضعیت</small><b>' + stateText + '</b></div>',
     '<div class="pipe-item ' + (p.enabled ? 'ok' : 'bad') + '"><small>ناظرِ پوشه‌ها</small><b>' + (p.enabled ? 'فعال' : 'غیرفعال') + '</b></div>',
     '<div class="pipe-item ' + (p.clean_up_to_date ? 'ok' : 'warn') + '"><small>گزارشِ تمیز</small><b>' + (p.clean_up_to_date ? 'منطبق با فایل خام' : 'نیاز به تبدیل دارد') + '</b></div>',
-    '<div class="pipe-item ' + (p.python_ready ? 'ok' : 'bad') + '"><small>ابزارِ تبدیل (پایتون)</small><b>' + (p.python_ready ? 'در دسترس' : 'نصب نیست') + '</b></div>',
+    '<div class="pipe-item ' + (p.python_ready ? 'ok' : 'bad') + '"><small>ابزارِ تبدیل (پایتون + openpyxl)</small><b>'
+      + (p.python_ready
+        ? 'در دسترس' + (p.python && p.python.version ? ' — ' + escapeHtml(String(p.python.version).replace(/^Python\s*/i, 'v')) : '')
+        : (p.python && p.python.python ? 'پایتون هست، openpyxl نصب نیست' : 'پایتون نصب نیست'))
+      + '</b></div>',
     '<div class="pipe-item"><small>آخرین اجرا</small><b>' + faDateTime(p.last_run_at) + '</b></div>',
     '<div class="pipe-item"><small>اجراهای این نشست</small><b>' + faInt(p.runs || 0) + '</b></div>',
     '</div>',
@@ -1071,6 +1075,11 @@ export const admin = {
               اگر چند نسخه از یک فایل باشد، جدیدترین (بر اساس زمانِ ویرایش) به کار می‌رود.</small>
             </div>
             <div class="row-actions">
+              ${pipe && !pipe.python_ready
+    ? (pipe.python && pipe.python.python
+      ? '<button class="btn btn-primary" data-act="setup-python">نصبِ خودکارِ openpyxl</button>'
+      : '<span class="pill bad">پایتون نصب نیست — install_windows.bat را اجرا کنید</span>')
+    : ''}
               <button class="btn btn-primary" data-act="refresh">به‌روزرسانی فوری</button>
               <button class="btn-mini" data-act="force">تبدیلِ دوبارهٔ فایل خام (اجباری)</button>
               <button class="btn-danger" data-act="rebuild" style="padding:5px 11px;font-size:12px">بازسازی کامل از فایل‌های خام</button>
@@ -1187,10 +1196,34 @@ export const admin = {
     }
     root.querySelectorAll('[data-act]').forEach((b) => {
       b.addEventListener('click', () => {
+        if (b.dataset.act === 'setup-python') return doSetupPython(b);
         if (b.dataset.act === 'rebuild') return doRebuild();
         return doRefresh(b.dataset.act === 'force');
       });
     });
+
+    // --- نصبِ خودکارِ نیازمندیِ ابزار تبدیل (openpyxl) و سپس تبدیلِ فایل‌های خام
+    // تا کاربر بدونِ خطِ فرمان و بدونِ برگشتن به سازنده، دادهٔ تازه بگیرد.
+    async function doSetupPython(btn) {
+      const btns = Array.from(root.querySelectorAll('[data-act]'));
+      btns.forEach((b) => { b.disabled = true; });
+      btn.textContent = 'در حال نصب…';
+      toast('نصبِ openpyxl آغاز شد؛ اگر اینترنت کند باشد چند دقیقه طول می‌کشد');
+      try {
+        const r = await api('/api/admin/setup-python', { method: 'POST' });
+        if (r && r.ok) {
+          const tot = r.result?.import?.totals || {};
+          const n = (tot.inprocess || 0) + (tot.inspection || 0) + (tot.production || 0);
+          toast('نیازمندی‌ها نصب شد و داده‌ها ساخته شد: ' + faInt(n) + ' ردیف', 'success');
+        } else {
+          toast('نصب ناموفق: ' + ((r && r.message) || 'خطای نامشخص'), 'error');
+          if (r && r.output) window.console?.warn('[setup-python]', String(r.output).slice(-1500));
+        }
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+      admin.render(root);
+    }
 
     // --- بازسازیِ کامل: پاک‌کردن گزارش‌های تمیز و ساخت دوباره از فایل‌های خامِ فعلی
     async function doRebuild() {

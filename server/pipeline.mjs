@@ -19,7 +19,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { ROOT, RAW_DIR, CLEAN_DIR, getDb, ready as dbReady } from './db.mjs';
 import { runCleanAsync, rawRoles } from './clean.mjs';
 import { runImport } from './etl.mjs';
@@ -112,6 +112,7 @@ export function pipelineStatus() {
     clean_files: listExcel(CLEAN_DIR),
     clean_up_to_date: cleanIsUpToDate(),
     python_ready: pythonReady(),
+    python: pythonStatus(),
     raw_roles: rawRolesSafe()
   };
 }
@@ -124,16 +125,96 @@ function rawRolesSafe() {
   return rolesCache.value;
 }
 
-/** آیا پایتون (برای اجرای ابزار تبدیل qc.py) در دسترس است؟ — نتیجه کش می‌شود */
-let PYTHON_READY;
-export function pythonReady() {
-  if (PYTHON_READY !== undefined) return PYTHON_READY;
-  for (const [cmd, args] of [['python3', ['--version']], ['python', ['--version']], ['py', ['-3', '--version']]]) {
-    const r = spawnSync(cmd, args, { encoding: 'utf8' });
-    if (!r.error && r.status === 0) { PYTHON_READY = true; return true; }
+/**
+ * وضعیتِ پایتونِ ابزار تبدیل: پیدا می‌شود؟ کتابخانهٔ openpyxl را دارد؟
+ * «در دسترس» یعنی هر دو — چون بدونِ openpyxl تبدیلِ فایل خام ممکن نیست.
+ * @param {{force?:boolean}} opts force=true کش را نادیده می‌گیرد (پس از نصب)
+ * @returns {{ok:boolean, python:boolean, exe:string|null, version:string, openpyxl:boolean, error:string}}
+ */
+let PY_STATUS;
+export function pythonStatus({ force = false } = {}) {
+  if (!force && PY_STATUS) return PY_STATUS;
+  const st = { ok: false, python: false, exe: null, version: '', openpyxl: false, openpyxl_version: '', error: '' };
+  for (const [cmd, pre] of [['python3', []], ['python', []], ['py', ['-3']]]) {
+    const v = spawnSync(cmd, [...pre, '--version'], { encoding: 'utf8', timeout: 20000 });
+    if (v.error || v.status !== 0) continue;
+    st.python = true;
+    st.exe = [cmd, ...pre].join(' ');
+    st.version = String(v.stdout || v.stderr || '').trim().split('\n')[0];
+    const o = spawnSync(cmd, [...pre, '-c', 'import openpyxl,sys;sys.stdout.write(openpyxl.__version__)'],
+      { encoding: 'utf8', timeout: 40000 });
+    st.openpyxl = !o.error && o.status === 0;
+    if (st.openpyxl) st.openpyxl_version = String(o.stdout || '').trim();
+    if (!st.openpyxl) st.error = String(o.stderr || o.error?.message || '').trim().split('\n').pop() || '';
+    break;
   }
-  PYTHON_READY = false;
-  return false;
+  st.ok = st.python && st.openpyxl;
+  PY_STATUS = st;
+  return st;
+}
+
+/** آیا ابزار تبدیل (پایتون + openpyxl) در دسترس است؟ — نتیجه کش می‌شود */
+export function pythonReady() {
+  return pythonStatus().ok;
+}
+
+/**
+ * نصبِ خودکارِ نیازمندی‌ها (openpyxl) با همان پایتونی که پیدا شده — تا کاربر
+ * مجبور نباشد خطِ فرمان باز کند. اگر pip به پوشهٔ سیستم دسترسی نداشت، با --user
+ * دوباره تلاش می‌شود. خروجی برای نمایش در رابط نگه داشته می‌شود.
+ * @returns {Promise<{ok:boolean, message:string, output:string, command:string}>}
+ */
+export function installPythonDeps() {
+  const req = path.join(ROOT, 'requirements.txt');
+  const found = pythonStatus({ force: true });
+  if (found.ok) {
+    return Promise.resolve({
+      ok: true,
+      message: 'نیازمندی‌ها از قبل نصب است' + (found.openpyxl_version ? ' (openpyxl ' + found.openpyxl_version + ')' : ''),
+      output: '',
+      command: '(چیزی برای نصب نبود)'
+    });
+  }
+  const [cmd, ...pre] = (found.exe || 'python3').split(' ');
+
+  /** یک تلاشِ pip؛ نتیجه شاملِ کدِ خروج و همهٔ خروجی است */
+  const pip = (extra) => new Promise((resolve) => {
+    const args = [...pre, '-m', 'pip', 'install', '--disable-pip-version-check', '-r', req, ...extra];
+    const command = [cmd, ...args].join(' ');
+    let out = '';
+    let settled = false;
+    const finish = (code) => { if (settled) return; settled = true; clearTimeout(timer); resolve({ code, out, command }); };
+    let child;
+    try { child = spawn(cmd, args, { cwd: ROOT, windowsHide: true }); }
+    catch (err) { out = String(err.message || err); return finish(-1); }
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } finish(-2); }, 300000);
+    child.stdout?.on('data', (d) => { out += d; });
+    child.stderr?.on('data', (d) => { out += d; });
+    child.on('error', (err) => { out += '\n' + String(err.message || err); finish(-1); });
+    child.on('close', (code) => finish(code));
+  });
+
+  return (async () => {
+    // ترتیبِ تلاش: عادی ← فقط برای کاربر جاری ← (در لینوکسِ PEP 668) با پرچمِ سیستمی
+    const plans = [[], ['--user']];
+    let last = null;
+    for (let i = 0; i < plans.length; i += 1) {
+      last = await pip(plans[i]);
+      PY_STATUS = undefined;
+      if (pythonStatus({ force: true }).ok) {
+        return { ok: true, message: 'openpyxl نصب شد و ابزار تبدیل آماده است', output: last.out.slice(-4000), command: last.command };
+      }
+      if (/externally-managed-environment/i.test(last.out) && plans.length === 2) {
+        plans.push(['--break-system-packages'], ['--user', '--break-system-packages']);
+      }
+      if (last.code === -1 || last.code === -2) break;
+    }
+    const message = !last ? 'پایتون پیدا نشد'
+      : last.code === -1 ? 'پایتون یا pip پیدا نشد'
+        : last.code === -2 ? 'نصب بیش از ۵ دقیقه طول کشید و متوقف شد (اینترنت کند یا فیلتر)'
+          : 'نصب با خطا پایان یافت (کد ' + last.code + ')';
+    return { ok: false, message, output: (last?.out || '').slice(-4000), command: last?.command || '' };
+  })();
 }
 
 /** نسخهٔ داده‌ها: با هر تغییرِ واقعی عوض می‌شود تا رابط خودش را به‌روز کند */
@@ -389,10 +470,15 @@ export function dataDiagnostics(counts = {}) {
   if (!clean.length) {
     if (!raw.length) {
       out.push({ level: 'error', text: 'هیچ فایلی در data/raw و data/clean نیست؛ فایل اکسل را در پوشهٔ data/raw بگذارید تا سامانه خودش تبدیل و بارگذاری کند.' });
-    } else if (!pythonReady()) {
-      out.push({ level: 'error', text: 'پوشهٔ data/clean خالی است و پایتون/openpyxl روی این سیستم پیدا نشد؛ بدونِ آن فایل‌های data/raw به «گزارش تمیز» تبدیل نمی‌شوند و داشبورد داده‌ای ندارد. یک‌بار install_windows.bat را اجرا کنید (یا: pip install -r requirements.txt) و بعد در «مدیریت داده و کاربران» دکمهٔ «بازسازی داده‌ها» را بزنید.' });
     } else {
-      out.push({ level: 'warn', text: 'گزارشِ تمیزی در data/clean نیست؛ تبدیلِ data/raw در جریان است یا ناموفق بوده. در صفحهٔ «مدیریت داده و کاربران» → «بازسازی داده‌ها» پیام خطا را ببینید.' });
+      const py = pythonStatus();
+      if (!py.python) {
+        out.push({ level: 'error', text: 'پوشهٔ data/clean خالی است و پایتون روی این سیستم نصب نیست؛ بدونِ آن فایل‌های data/raw به «گزارش تمیز» تبدیل نمی‌شوند و داشبورد داده‌ای ندارد. پایتون را از python.org نصب کنید (تیکِ Add python.exe to PATH را بزنید) یا install_windows.bat را اجرا کنید.' });
+      } else if (!py.openpyxl) {
+        out.push({ level: 'error', text: `پایتون پیدا شد (${py.version || 'بدونِ نسخه'}) ولی کتابخانهٔ openpyxl نصب نیست؛ بدونِ آن تبدیل انجام نمی‌شود. در صفحهٔ «مدیریت داده و کاربران» دکمهٔ «نصبِ خودکارِ openpyxl» را بزنید (یا install_windows.bat را اجرا کنید).` });
+      } else {
+        out.push({ level: 'warn', text: 'گزارشِ تمیزی در data/clean نیست؛ تبدیلِ data/raw در جریان است یا ناموفق بوده. در صفحهٔ «مدیریت داده و کاربران» → «تبدیلِ دوبارهٔ فایل خام (اجباری)» پیام خطا را ببینید.' });
+      }
     }
   }
 

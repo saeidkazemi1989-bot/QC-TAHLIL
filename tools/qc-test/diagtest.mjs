@@ -24,14 +24,25 @@ console.log('@@' + JSON.stringify(dataDiagnostics(JSON.parse(process.argv[2] || 
 
 const wipe = (dir, keepDot = false) => { for (const f of fs.readdirSync(dir)) if (!(keepDot && f.startsWith('.'))) fs.rmSync(path.join(dir, f)); };
 
+/* پایتونی که هست ولی openpyxl ندارد (شمِ آزمایشی) — رایج‌ترین وضعیت روی سیستمِ کاربر */
+const FAKE_BIN = path.join(tmp, 'fakebin');
+fs.mkdirSync(FAKE_BIN, { recursive: true });
+fs.writeFileSync(path.join(FAKE_BIN, 'python3'),
+  '#!/bin/sh\ncase "$1" in\n  --version) echo "Python 3.12.9"; exit 0;;\n'
+  + '  -c) echo "ModuleNotFoundError: No module named openpyxl" >&2; exit 1;;\nesac\nexit 0\n', { mode: 0o755 });
+
 /** اجرای یک سناریو: چه فایل‌هایی کجا باشد و پایتون در دسترس باشد یا نه */
-const run = ({ raw = [], clean = false, root = [], counts = {}, noPython = false }) => {
+const run = ({ raw = [], clean = false, root = [], counts = {}, noPython = false, fakePython = false }) => {
   wipe(RAW, true); wipe(CLEAN, true);
   for (const f of fs.readdirSync(tmp)) if (/\.xlsx$/i.test(f)) fs.rmSync(path.join(tmp, f));
   for (const f of raw) fs.writeFileSync(path.join(RAW, f), 'x');
   for (const f of root) fs.writeFileSync(path.join(tmp, f), 'x');
   if (clean) fs.writeFileSync(path.join(CLEAN, 'QC Report راهکاران.xlsx'), 'x');
-  const env = { ...process.env, ...(noPython ? { PATH: '/nonexistent' } : {}) };
+  const env = {
+    ...process.env,
+    ...(noPython ? { PATH: '/nonexistent' } : {}),
+    ...(fakePython ? { PATH: `${FAKE_BIN}:${process.env.PATH}` } : {})
+  };
   const r = spawnSync(process.execPath, [probe, JSON.stringify(counts)], { cwd: tmp, encoding: 'utf8', env });
   const line = (r.stdout || '').split('\n').find((l) => l.startsWith('@@'));
   if (!line) throw new Error(`probe failed: ${(r.stderr || '').slice(-300)}`);
@@ -53,6 +64,11 @@ ok('  و فایل‌های لازمِ نیامده را فهرست می‌کند
 
 d = run({ raw: RAW4, noPython: true });
 ok('پایتون/openpyxl نیست ⇒ خطای صریح با راه‌حل (install_windows.bat)', has(d, 'پایتون') && has(d, 'install_windows.bat'), texts(d));
+ok('  نبودِ پایتون کاربر را به python.org و PATH می‌فرستد', has(d, 'python.org') && has(d, 'PATH'), texts(d));
+
+d = run({ raw: RAW4, fakePython: true });
+ok('پایتون هست ولی openpyxl نیست ⇒ راه‌حلِ درون‌برنامه‌ای پیشنهاد می‌شود', has(d, 'openpyxl') && has(d, 'نصبِ خودکارِ openpyxl'), texts(d));
+ok('  نسخهٔ پایتونِ پیدا‌شده هم گفته می‌شود', has(d, 'Python 3.12.9'), texts(d));
 
 d = run({ raw: RAW4, root: ['فایل جدید من.xlsx'], counts: FULL });
 ok('اکسلِ جاافتاده در ریشه ⇒ هشدار با نامِ فایل', has(d, 'ریشهٔ پروژه') && has(d, 'فایل جدید من.xlsx'), texts(d));
