@@ -134,6 +134,7 @@ function renderShell() {
             <button class="btn btn-ghost" id="btn-logout">خروج</button>
           </div>
         </header>
+        <div class="data-banner" id="data-banner" hidden></div>
         <div class="filter-bar" id="filter-bar"></div>
         <div class="page-root" id="page-root"></div>
       </main>
@@ -400,6 +401,25 @@ function setLiveStatus({ kind = 'ok', note = '', time = null }) {
 }
 
 /**
+ * اگر داده‌ای بارگذاری نشده باشد، دلیل و راه‌حلِ دقیق را بالای صفحه نشان می‌دهد
+ * (به‌جای «داده‌ای پیدا نشد»ِ خالی که کاربر نمی‌داند چه کار کند).
+ * @param {Array<{level:'error'|'warn', text:string}>} diags
+ */
+export function renderDataBanner(diags) {
+  const box = document.getElementById('data-banner');
+  if (!box) return;
+  const items = (Array.isArray(diags) ? diags : []).filter((d) => d && d.text);
+  if (!items.length) { box.hidden = true; box.innerHTML = ''; return; }
+  const worst = items.some((d) => d.level === 'error') ? 'error' : 'warn';
+  box.hidden = false;
+  box.className = `data-banner lv-${worst}`;
+  box.innerHTML = '<b>چرا داده‌ای دیده نمی‌شود؟</b><ul>'
+    + items.map((d) => `<li class="lv-${d.level === 'error' ? 'error' : 'warn'}">${escapeHtml(d.text)}</li>`).join('')
+    + '</ul><small>راهنما: فایل اکسل را در پوشهٔ <code>data/raw</code> بگذارید؛ سامانه خودش تبدیل و بارگذاری می‌کند. '
+    + 'اگر پایتون نصب نیست <code>install_windows.bat</code> را اجرا کنید، یا «QC Report …» آماده را مستقیم در <code>data/clean</code> بگذارید.</small>';
+}
+
+/**
  * هر چند ثانیه وضعیت سرور را می‌پرسد؛ اگر فایل تازه‌ای در data/raw ریخته شده و
  * سامانه تبدیل + بارگذاری را تمام کرده باشد، صفحهٔ جاری بی‌درنگ به‌روز می‌شود.
  */
@@ -411,6 +431,7 @@ async function pollHealth() {
     liveFails = 0;
     const w = h.watcher || {};
     const running = w.state === 'running';
+    renderDataBanner(h.diagnostics);
     setLiveStatus({
       kind: running ? 'busy' : (w.enabled === false ? 'bad' : 'ok'),
       note: running ? 'در حال به‌روزرسانی داده‌ها…'

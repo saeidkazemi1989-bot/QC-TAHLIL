@@ -1,6 +1,9 @@
 /* آزمونِ رابطِ صفحهٔ «مدیریت داده و کاربران» — کارتِ به‌روزرسانی خودکار و جدول فایل‌ها */
 import { JSDOM, VirtualConsole } from 'jsdom';
 import fs from 'node:fs';
+import { ensureBundles } from './mkbundle.mjs';
+
+await ensureBundles();
 
 const BASE = process.env.QC_BASE || 'http://localhost:3000';
 const errors = [];

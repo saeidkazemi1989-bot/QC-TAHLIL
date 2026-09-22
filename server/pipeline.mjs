@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { RAW_DIR, CLEAN_DIR, getDb, ready as dbReady } from './db.mjs';
+import { ROOT, RAW_DIR, CLEAN_DIR, getDb, ready as dbReady } from './db.mjs';
 import { runCleanAsync, rawRoles } from './clean.mjs';
 import { runImport } from './etl.mjs';
 
@@ -364,4 +364,52 @@ export async function rebuildFromRaw({ reason = 'rebuild' } = {}) {
     message: `${removed.length} گزارش تمیز حذف شد و داده‌ها فقط از فایل‌های خامِ فعلی از نو ساخته شد.`
       + (res.ok === false ? ` (با هشدار: ${res.message})` : '')
   };
+}
+
+/**
+ * چرا داده‌ای دیده نمی‌شود؟ — تشخیص‌های عملی از وضعیتِ پوشه‌ها و پایتون.
+ * هدف: کاربر به‌جای «داده‌ای پیدا نشد»ِ خالی، دلیل و راه‌حلِ دقیق ببیند.
+ * @param {{inprocess?:number,inspection?:number,production?:number,orders?:number}} counts
+ * @returns {Array<{level:'error'|'warn', text:string}>}
+ */
+export function dataDiagnostics(counts = {}) {
+  const out = [];
+  const empty = ['inprocess', 'inspection', 'production', 'orders'].every((k) => !counts[k]);
+  const clean = listExcel(CLEAN_DIR);
+  const raw = listExcel(RAW_DIR);
+
+  // ۱) اکسل‌های جاافتاده در ریشهٔ پروژه — هیچ‌جا خوانده نمی‌شوند
+  let rootXlsx = [];
+  try { rootXlsx = fs.readdirSync(ROOT).filter(isExcel); } catch { /* ignore */ }
+  if (rootXlsx.length) {
+    out.push({ level: 'warn', text: `این فایل‌های اکسل در ریشهٔ پروژه‌اند و خوانده نمی‌شوند؛ به پوشهٔ data/raw منتقلشان کنید: ${rootXlsx.join('، ')}` });
+  }
+
+  // ۲) گزارشِ تمیز نیست
+  if (!clean.length) {
+    if (!raw.length) {
+      out.push({ level: 'error', text: 'هیچ فایلی در data/raw و data/clean نیست؛ فایل اکسل را در پوشهٔ data/raw بگذارید تا سامانه خودش تبدیل و بارگذاری کند.' });
+    } else if (!pythonReady()) {
+      out.push({ level: 'error', text: 'پوشهٔ data/clean خالی است و پایتون/openpyxl روی این سیستم پیدا نشد؛ بدونِ آن فایل‌های data/raw به «گزارش تمیز» تبدیل نمی‌شوند و داشبورد داده‌ای ندارد. یک‌بار install_windows.bat را اجرا کنید (یا: pip install -r requirements.txt) و بعد در «مدیریت داده و کاربران» دکمهٔ «بازسازی داده‌ها» را بزنید.' });
+    } else {
+      out.push({ level: 'warn', text: 'گزارشِ تمیزی در data/clean نیست؛ تبدیلِ data/raw در جریان است یا ناموفق بوده. در صفحهٔ «مدیریت داده و کاربران» → «بازسازی داده‌ها» پیام خطا را ببینید.' });
+    }
+  }
+
+  // ۳) نقشِ فایل‌های خام کامل نیست (چهار فایلِ لازم)
+  if (!clean.length && raw.length) {
+    const names = { quality: 'اطلاعات جامع کیفیت حین تولید', defect: 'گزارش عیب‌های سند بازرسی', prod: 'گزارش تعداد تولید به تفکیک سند عملکرد', grouping: 'گروه‌بندی محصولات' };
+    const found = rawRolesSafe()?.found || {};
+    const missing = Object.keys(names).filter((r) => !found[r]);
+    if (missing.length) {
+      out.push({ level: 'warn', text: `از چهار فایلِ لازم در data/raw، این‌ها پیدا نشد یا ستون‌هایشان شناخته نشد: ${missing.map((m) => names[m]).join('، ')}` });
+    }
+  }
+
+  // ۴) گزارشِ تمیز هست ولی هیچ داده‌ای بارگذاری نشده
+  if (clean.length && empty) {
+    out.push({ level: 'error', text: `${clean.length} گزارشِ تمیز در data/clean هست ولی هیچ داده‌ای بارگذاری نشد؛ شیت‌ها/ستون‌های فایل با نمونهٔ «QC Report راهکاران» یکی نیست. خطای ETL در «مدیریت داده و کاربران» دیده می‌شود.` });
+  }
+
+  return out;
 }

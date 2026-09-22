@@ -1,6 +1,9 @@
 /* بررسی پارتو: پیش‌فرض «توضیحات تعمیرات» + امکان تغییر به «کد عیب» */
 import { JSDOM, VirtualConsole } from 'jsdom';
 import fs from 'node:fs';
+import { ensureBundles } from './mkbundle.mjs';
+
+await ensureBundles();
 const BASE = 'http://localhost:3000';
 const errors = [];
 const vc = new VirtualConsole();

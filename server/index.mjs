@@ -17,7 +17,7 @@ import { runImport } from './etl.mjs';
 import { parseFilters } from './filters.mjs';
 import { checkDefectCounts } from './countcheck.mjs';
 import { insights } from './insights.mjs';
-import { refreshAll, rebuildFromRaw, pipelineStatus, startWatcher, computeDataVersion, adoptExistingClean } from './pipeline.mjs';
+import { refreshAll, rebuildFromRaw, pipelineStatus, startWatcher, computeDataVersion, adoptExistingClean, dataDiagnostics } from './pipeline.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
   productionSummary, productionTrend, productionBreakdown, meta, DIMENSIONS, matrix, times,
@@ -397,7 +397,8 @@ app.get('/api/health', (req, res) => {
     ok: true,
     counts,
     data_version: pipelineStatus().data_version || computeDataVersion(),
-    watcher: pipelineStatus()
+    watcher: pipelineStatus(),
+    diagnostics: dataDiagnostics(counts)
   });
 });
 

@@ -1,12 +1,12 @@
 # ابزارهای تست رابط کاربری
 
 نیاز: `npm install` در این پوشه (فقط jsdom). پیش از اجرا باید سرور روی
-پورت ۳۰۰۰ در حال اجرا باشد (`npm start` در ریشهٔ پروژه) و باندلِ تست ساخته شود:
+پورت ۳۰۰۰ در حال اجرا باشد (`npm start` در ریشهٔ پروژه).
 
-```bash
-npx esbuild public/js/main.js --bundle --format=iife --outfile=/tmp/bundle.js --global-name=__core
-npx esbuild tools/qc-test/testentry.js --bundle --format=iife --outfile=tools/qc-test/testbundle.js
-```
+باندل‌ها دیگر دستی ساخته نمی‌شوند: `mkbundle.mjs` در آغازِ هر آزمون، `/tmp/bundle.js`
+و `testbundle.js` را در صورت نبود یا کهنه‌بودن خودش می‌سازد. آزمون‌های نسخهٔ آفلاین
+(`navstatic`، `analyststatic`، `drillstatic`) به `QC-Dashboard.html` نیاز دارند؛
+اگر نباشد به‌جای خطا، راهنما می‌دهند (`npm run export`) و با کدِ ۲ بیرون می‌روند.
 
 | فایل | کاری که می‌کند |
 | --- | --- |
@@ -16,6 +16,9 @@ npx esbuild tools/qc-test/testentry.js --bundle --format=iife --outfile=tools/qc
 | `analyststatic.mjs` | همان بررسی‌ها روی نسخهٔ تک‌فایل آفلاین (`QC-Dashboard.html`) برای هر سه منبع |
 | `paretotest.mjs` | بررسی پارتو: پیش‌فرض «توضیحات تعمیرات» و تغییر به «کد عیب» در سه صفحه |
 | `drillstatic.mjs` | بررسی نسخهٔ آفلاین: روند روزانه، تغییر منبع، چهار سطح تحلیل گام‌به‌گام و ستون‌های رکوردها |
+| `diagtest.mjs` | «چرا داده‌ای دیده نمی‌شود؟» — شش سناریویِ تشخیص (`dataDiagnostics`) در یک ریشهٔ موقت + سیم‌کشیِ `/api/health` و بنرِ کلاینت |
+| `bannertest.mjs` | بنرِ تشخیص در jsdom: نمایش/پنهان‌شدن، شدتِ خطا و هشدار، راهنمای عملی و escape شدنِ متن |
+| `mkbundle.mjs` | ساختِ خودکارِ باندل‌های آزمون (کمکی؛ به‌تنهایی اجرا نمی‌شود) |
 
 اجرای سریع همه:
 

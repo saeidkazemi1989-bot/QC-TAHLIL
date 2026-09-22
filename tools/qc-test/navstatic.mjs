@@ -1,10 +1,11 @@
 /* بررسیِ نوارِ «پرش به بخش» در نسخهٔ تک‌فایل آفلاین */
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { needStatic } from './mkbundle.mjs';
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/getContext/.test(e.message)) errors.push('JSDOM: ' + e.message); });
 vc.on('error', (...a) => errors.push('CONSOLE: ' + a.join(' ')));
-const dom = await JSDOM.fromFile('/home/user/QC-TAHLIL/QC-Dashboard.html', {
+const dom = await JSDOM.fromFile(needStatic("آزمونِ نوارِ پرش"), {
   url: 'file:///C:/x/QC-Dashboard.html', runScripts: 'dangerously', resources: 'usable',
   pretendToBeVisual: true, virtualConsole: vc,
   beforeParse(window) {

@@ -1,6 +1,9 @@
 /* رندر همهٔ صفحه‌ها در حالت سرور (بررسی خطاهای زمان اجرا) */
 import { JSDOM, VirtualConsole } from 'jsdom';
 import fs from 'node:fs';
+import { ensureBundles } from './mkbundle.mjs';
+
+await ensureBundles();
 const BASE = 'http://localhost:3000';
 const errors = [];
 const vc = new VirtualConsole();

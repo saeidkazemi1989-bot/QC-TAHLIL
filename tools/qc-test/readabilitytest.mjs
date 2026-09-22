@@ -1,6 +1,9 @@
 /* آزمونِ خواناییِ رابط: رنگ‌های پرمایه + جداسازیِ عدد از توضیح در بخشِ تحلیل */
 import { JSDOM, VirtualConsole } from 'jsdom';
 import fs from 'node:fs';
+import { ensureBundles } from './mkbundle.mjs';
+
+await ensureBundles();
 
 const BASE = process.env.QC_BASE || 'http://localhost:3000';
 const errors = [];
