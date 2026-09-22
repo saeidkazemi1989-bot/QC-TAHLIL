@@ -192,6 +192,33 @@ await wait(2500);
 ok('صفحهٔ کم‌کارت نوارِ پرش نمی‌گیرد', !window.document.querySelector('#page-root > .sec-nav'),
   String(window.document.querySelectorAll('#page-root > .sec-nav').length));
 
+/* ------------------------------------- ۵) پویشِ کل صفحه‌ها: متنِ عدددارِ تراشه‌نشده */
+console.log('\n— پویشِ همهٔ صفحه‌ها: جایی که عددها هنوز به متن چسبیده‌اند —');
+const NUM_TOKEN = /[۰-۹0-9][۰-۹0-9٬،.,\/%٪ -]*/g;
+const proseSel = '.card-sub, .card-foot, .explain p, .explain li, .ti-story, .ti-actions li, .sent-list li, .mini-alarm p, .kpi-hint';
+const skipIfInside = '.chart, .kpi-value, .fd, table, .sec-nav, .tbl, svg';
+let offenders = [];
+for (const page of ['home', 'analyst', 'management', 'inprocess', 'inspection', 'pfmea', 'production', 'guide', 'drill']) {
+  await window.eval(`(async () => { await window.__PAGES.${page}.render(document.getElementById('page-root')); })()`);
+  await wait(3200);
+  const root = window.document.getElementById('page-root');
+  for (const el of Array.from(root.querySelectorAll(proseSel))) {
+    if (el.closest(skipIfInside)) continue;
+    // عددهایی که داخلِ تراشه هستند کنار گذاشته می‌شوند
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('.num').forEach((n) => n.remove());
+    const rest = clone.textContent || '';
+    const hits = rest.match(NUM_TOKEN) || [];
+    const words = rest.trim().split(/\s+/).length;
+    if (hits.length >= 3 && words >= 8) {
+      offenders.push(`${page}: ${hits.length} عددِ بی‌تراشه در ${words} کلمه — ${rest.trim().slice(0, 90)}`);
+    }
+  }
+}
+ok('هیچ متنِ بلندی با سه عددِ بی‌تراشه نمانده است', offenders.length === 0,
+  offenders.length ? `\n   ${offenders.slice(0, 8).join('\n   ')}` : '');
+console.log(`   بررسی‌شده: ${offenders.length === 0 ? 'همهٔ متن‌های شماره‌دار تراشه دارند' : offenders.length + ' مورد'}`);
+
 console.log('\nخطاها:', errors.length ? [...new Set(errors)].slice(0, 5).join('\n') : 'بدون خطا');
 console.log(`نتیجه: ${pass} موفق، ${fail} ناموفق`);
 dom.window.close();

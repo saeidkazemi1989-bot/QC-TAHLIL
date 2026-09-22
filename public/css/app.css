@@ -726,3 +726,8 @@ small { font-size: 12.5px; color: var(--muted); }
 .cat-table td .num { font-size: 12px; padding: 1px 6px; margin: 0 1px; }
 .cat-table td { vertical-align: top; line-height: 2; }
 .cat-table td:first-child { width: 64px; text-align: center; }
+
+/* ---------------- جدولِ آستانه‌های تحلیلگر: قاعده و عدد جدا از هم ---------------- */
+.rule-table { margin-top: 8px; max-width: 620px; }
+.rule-table td:first-child { font-weight: 700; color: var(--ink); white-space: nowrap; }
+.rule-table td .num { font-size: 12.5px; padding: 1px 7px; }
