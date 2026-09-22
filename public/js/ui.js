@@ -134,3 +134,65 @@ export function node(html) {
 }
 
 export { compact, faInt, faDec, faPct };
+
+/* ============================================================ خواناییِ تحلیل
+   دو مشکلِ گزارش‌شدهٔ کاربر:
+   ۱) جمله‌های پشتِ سر هم با عددهای زیاد → معلوم نیست هر عدد مالِ کدام توضیح است
+   ۲) پیدا کردنِ خواسته‌ها در صفحه سخت است
+   راه‌حل: هر جمله در یک سطرِ جدا با نشانگرِ رنگی، و هر عدد در «تراشهٔ عدد» برجسته. */
+
+/** رقم‌های فارسی/لاتین با جداکننده و درصدِ چسبیده به آن */
+const NUM_RE = /([▼▲△▽◀▶]?\s?[۰-۹٠-٩0-9][۰-۹٠-٩0-9.,]*(?:\s?(?:٪|%|×))?)/g;
+
+/**
+ * عددها را در متن برجسته می‌کند. ورودی باید پیش‌تر `escapeHtml` شده باشد؛
+ * خودِ تابع هم بخش‌های escape‌شده (مثل &#39;) را دست‌نخورده می‌گذارد.
+ */
+export function highlightNums(escaped) {
+  return String(escaped == null ? '' : escaped)
+    .split(/(&#?\w+;)/g)
+    .map((part, i) => (i % 2 === 1 ? part : part.replace(NUM_RE, '<b class="num">$1</b>')))
+    .join('');
+}
+
+/**
+ * متنِ پیوسته را به سطرهای جدا (هر جمله یک سطر) با نشانگرِ رنگی تبدیل می‌کند
+ * تا عددِ هر جمله کنارِ همان جمله بماند.
+ */
+export function sentenceList(text, { tone = '', icon = '', cls = 'sent-list' } = {}) {
+  const parts = String(text || '')
+    .split(/(?<=[.؛:!؟])\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 1);
+  if (!parts.length) return '';
+  const mark = icon || '<span class="sent-dot"></span>';
+  return `<ul class="${cls}${tone ? ' tone-' + tone : ''}">`
+    + parts.map((p) => `<li><span class="sent-mark">${mark}</span><span class="sent-text">${highlightNums(escapeHtml(p))}</span></li>`).join('')
+    + '</ul>';
+}
+
+/**
+ * کارتِ یک «یافته»: آیکون + برچسب + یک عددِ بزرگ + یک جملهٔ توضیح + تراشه‌های برچسب‌دار.
+ * هر یافته یک کارتِ مستقل است، پس عدد و توضیحش قاطی نمی‌شوند.
+ */
+export function findingCard(f) {
+  const tone = f.tone || 'info';
+  const chips = (f.chips || []).map((c) => `<span class="fd-chip"><b>${escapeHtml(c.label)}</b> ${highlightNums(escapeHtml(c.value))}</span>`).join('');
+  return `<article class="fd tone-${escapeHtml(tone)}">
+    <div class="fd-head">
+      <span class="fd-icon">${escapeHtml(f.icon || '•')}</span>
+      <span class="fd-label">${escapeHtml(f.label || '')}</span>
+    </div>
+    <div class="fd-value">${highlightNums(escapeHtml(f.value == null ? '—' : String(f.value)))}${f.unit ? `<small>${escapeHtml(f.unit)}</small>` : ''}</div>
+    ${f.sub ? `<div class="fd-sub">${highlightNums(escapeHtml(f.sub))}</div>` : ''}
+    ${f.text ? `<p class="fd-text">${highlightNums(escapeHtml(f.text))}</p>` : ''}
+    ${chips ? `<div class="fd-chips">${chips}</div>` : ''}
+    ${f.drill ? '<div class="fd-drill">برای دیدن رکوردها کلیک کنید ←</div>' : ''}
+  </article>`;
+}
+
+/** شبکهٔ یافته‌ها (کلیاتِ تحلیلگر) */
+export function findingsHtml(list, { compact = false } = {}) {
+  if (!list || !list.length) return '';
+  return `<div class="fd-grid${compact ? ' fd-compact' : ''}">${list.map(findingCard).join('')}</div>`;
+}

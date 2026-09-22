@@ -16,7 +16,7 @@ export function chart(node, option, { onClick = null } = {}) {
 
 const baseGrid = { left: 12, right: 18, top: 34, bottom: 10, containLabel: true };
 
-const axisLabelStyle = { fontFamily: 'Vazirmatn, Tahoma, "B Nazanin", sans-serif', fontSize: 11, color: '#4a5568' };
+const axisLabelStyle = { fontFamily: 'Vazirmatn, Tahoma, "B Nazanin", sans-serif', fontSize: 11.5, color: '#2b3a4d', fontWeight: 600 };
 
 function tooltip(extra = {}) {
   return {
@@ -25,7 +25,7 @@ function tooltip(extra = {}) {
     backgroundColor: 'rgba(255,255,255,0.97)',
     borderColor: '#d7dee8',
     borderWidth: 1,
-    textStyle: { color: '#1f2b3d', fontFamily: 'Vazirmatn, Tahoma, sans-serif', fontSize: 12 },
+    textStyle: { color: '#0d1622', fontFamily: 'Vazirmatn, Tahoma, sans-serif', fontSize: 12.5 },
     ...extra
   };
 }
@@ -46,7 +46,7 @@ export function barH(node, data, {
         return `<b>${p.name}</b><br/>${valueName}: ${faInt(p.value)}${unit}${extra}${ppm}`;
       }
     }),
-    xAxis: { type: 'value', axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#eef2f7' } } },
+    xAxis: { type: 'value', axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#e6ecf4' } } },
     yAxis: {
       type: 'category',
       data: rows.map((r) => r.label),
@@ -90,7 +90,7 @@ export function pareto(node, data, { limit = 12, valueName = 'تعداد عیب'
       axisTick: { show: false }
     },
     yAxis: [
-      { type: 'value', name: valueName, nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#eef2f7' } } },
+      { type: 'value', name: valueName, nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#e6ecf4' } } },
       { type: 'value', name: 'درصد تجمعی', max: 100, nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: '{value}٪' }, splitLine: { show: false } }
     ],
     series: [
@@ -170,7 +170,7 @@ export function trendCombo(node, rows, { target = 0, onClick = null, defectLabel
       axisTick: { show: false }
     },
     yAxis: [
-      { type: 'value', name: 'تعداد', nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#eef2f7' } } },
+      { type: 'value', name: 'تعداد', nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#e6ecf4' } } },
       { type: 'value', name: 'PPM', nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { show: false } }
     ],
     series
@@ -186,7 +186,7 @@ export function donut(node, data, { valueName = 'تعداد عیب', onClick = n
       trigger: 'item',
       backgroundColor: 'rgba(255,255,255,0.97)',
       borderColor: '#d7dee8',
-      textStyle: { color: '#1f2b3d', fontFamily: 'Vazirmatn, Tahoma, sans-serif', fontSize: 12 },
+      textStyle: { color: '#0d1622', fontFamily: 'Vazirmatn, Tahoma, sans-serif', fontSize: 12.5 },
       formatter: (p) => `<b>${p.name}</b><br/>${valueName}: ${faInt(p.value)} (${p.percent}٪)`
     },
     legend: { orient: 'vertical', right: 4, top: 'middle', textStyle: { ...axisLabelStyle, fontSize: 11 }, itemWidth: 10, itemHeight: 8, icon: 'circle' },
@@ -214,8 +214,8 @@ export function scatter(node, data, { xName = 'تولید', yName = 'PPM' } = {}
         return `<b>${r.label}</b><br/>${xName}: ${faInt(r.production)}<br/>عیوب: ${faInt(r.defects)}<br/>${yName}: ${faInt(r.ppm)}`;
       }
     }),
-    xAxis: { type: 'value', name: xName, nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#eef2f7' } } },
-    yAxis: { type: 'value', name: yName, nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#eef2f7' } } },
+    xAxis: { type: 'value', name: xName, nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#e6ecf4' } } },
+    yAxis: { type: 'value', name: yName, nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#e6ecf4' } } },
     series: [{
       type: 'scatter',
       symbolSize: (v) => Math.max(8, Math.min(34, Math.sqrt(v[1]) / 6)),
@@ -244,7 +244,7 @@ export function deltaBars(node, rows, { valueName = 'تغییر PPM' } = {}) {
         return `<b>${d.label}</b><br/>دوره قبل: ${faInt(d.prev)}<br/>دوره جاری: ${faInt(d.current)}<br/>تغییر: ${faDec(d.delta, 1)}٪`;
       }
     }),
-    xAxis: { type: 'value', axisLabel: { ...axisLabelStyle, formatter: (v) => `${faInt(v)}٪` }, splitLine: { lineStyle: { color: '#eef2f7' } } },
+    xAxis: { type: 'value', axisLabel: { ...axisLabelStyle, formatter: (v) => `${faInt(v)}٪` }, splitLine: { lineStyle: { color: '#e6ecf4' } } },
     yAxis: {
       type: 'category',
       data: data.map((r) => r.label),
@@ -278,7 +278,7 @@ export function productionChart(node, rows, { onClick = null } = {}) {
     tooltip: tooltip({ formatter: (ps) => { const i = ps[0].dataIndex; const r = rows[i]; return `<b>${r.key}</b><br/>تولید: ${faInt(r.production)}<br/>ضایعات: ${faInt(r.scrap)}<br/>پرسنل: ${faInt(r.personnel)}<br/>اسناد عملکرد: ${faInt(r.docs)}`; } }),
     xAxis: { type: 'category', data: labels, axisLabel: { ...axisLabelStyle, interval: 0, rotate: labels.length > 12 ? 45 : 0 }, axisTick: { show: false } },
     yAxis: [
-      { type: 'value', name: 'تعداد', nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#eef2f7' } } },
+      { type: 'value', name: 'تعداد', nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { lineStyle: { color: '#e6ecf4' } } },
       { type: 'value', name: 'پرسنل', nameTextStyle: axisLabelStyle, axisLabel: { ...axisLabelStyle, formatter: (v) => faInt(v) }, splitLine: { show: false } }
     ],
     series: [

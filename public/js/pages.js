@@ -3,7 +3,7 @@ import { api, filterQuery, faInt, faDec, faDateTime, escapeHtml, downloadCsv, to
 import { barH, pareto, trendCombo, donut, scatter, deltaBars, productionChart } from './charts.js';
 import {
   cardShell, kpiCard, loadingCard, emptyCard, dataTable, matrixTable, infoPopoverHtml,
-  periodSeg, wireSeg
+  periodSeg, wireSeg, findingsHtml, sentenceList, highlightNums
 } from './ui.js';
 import { GLOSSARY } from './glossary.js';
 
@@ -142,9 +142,9 @@ export const home = {
         actions: '<a class="btn btn-primary" href="#/analyst">تحلیل کامل و همهٔ آلارم‌ها ←</a>',
         body: `${sum.verdict}${sum.quick}
           ${topAlarms.length ? `<div class="explain" style="margin-top:10px"><b>مهم‌ترین آلارم‌ها</b>
-            <ul class="mini-alarms">${topAlarms.map((a) => `<li class="sev-${escapeHtml(a.severity)}"><span>${escapeHtml(a.severity_label)}</span> ${escapeHtml(a.title)}</li>`).join('')}</ul></div>` : ''}
+            <ul class="mini-alarms">${topAlarms.map((a) => `<li class="sev-${escapeHtml(a.severity)}"><span>${escapeHtml(a.severity_label)}</span> ${highlightNums(escapeHtml(a.title))}</li>`).join('')}</ul></div>` : ''}
           <div style="margin-top:8px">${sum.table}</div>`,
-        foot: escapeHtml(ins.headline.narrative)
+        foot: ''
       }));
     })() : '';
 
@@ -1672,8 +1672,8 @@ function alarmHtml(a) {
       <span class="alarm-kind">${escapeHtml(a.kind_label || '')}</span>
       ${a.priority ? '<span class="alarm-flag">اولویت‌دار</span>' : ''}
     </div>
-    <h4 class="alarm-title">${escapeHtml(a.title)}</h4>
-    <p class="alarm-body">${escapeHtml(a.body)}</p>
+    <h4 class="alarm-title">${highlightNums(escapeHtml(a.title))}</h4>
+    ${sentenceList(a.body, { tone: a.severity, cls: 'sent-list alarm-body' })}
     ${(a.evidence && a.evidence.length)
     ? `<div class="alarm-ev">${a.evidence.map((e) => `<span class="ev"><b>${escapeHtml(e.label)}</b> ${escapeHtml(e.value)}</span>`).join('')}</div>`
     : ''}
@@ -1725,9 +1725,13 @@ function analystSummaryCard(r, { full = true } = {}) {
   return {
     verdict: `<div class="verdict-head tone-${escapeHtml(h.tone)}">
         <div class="verdict-badge">${escapeHtml(h.verdict)}</div>
-        <p class="verdict-text">${escapeHtml(h.narrative)}</p>
         <div class="verdict-chips">${chips}</div>
-      </div>`,
+      </div>
+      ${(h.findings && h.findings.length)
+        ? findingsHtml(h.findings)
+        : sentenceList(h.narrative, { tone: h.tone, cls: 'sent-list verdict-lines' })}
+      ${h.narrative ? `<details class="narrative-more"><summary>متنِ پیوستهٔ تحلیل (همان یافته‌ها به‌صورت جملهٔ پشتِ سرِ هم)</summary>
+        <p class="verdict-text">${highlightNums(escapeHtml(h.narrative))}</p></details>` : ''}`,
     quick: `<div class="quick-grid">${quick}</div>`,
     table: dataTable({
       columns: {
@@ -1852,7 +1856,7 @@ export const analyst = {
                   <span class="ti-trend">${escapeHtml(x.window.arrow)} ${escapeHtml(x.window.word)}</span>
                 </summary>
                 <div class="ti-body">
-                  <p class="ti-story">${escapeHtml(x.story)}</p>
+                  ${sentenceList(x.story, { cls: 'sent-list ti-story' })}
                   <div class="ti-grid">
                     <div><small>محصول‌ها</small>${topList(x.products, 3)}</div>
                     <div><small>فرآیند/مرحله</small>${topList(x.stages, 3)}</div>
@@ -1878,8 +1882,8 @@ export const analyst = {
         actions: '<button class="btn btn-ghost" id="an-csv-focus">خروجی کانون‌های اقدام (CSV)</button>',
         body: `<ol class="action-list">${(r.actions || []).map((a) => `
             <li class="sev-${escapeHtml(a.severity)}">
-              <b>${escapeHtml(a.title)}</b>
-              <span>${escapeHtml(a.text)}</span>
+              <b>${highlightNums(escapeHtml(a.title))}</b>
+              <span>${highlightNums(escapeHtml(a.text))}</span>
             </li>`).join('') || '<li>اقدام فوری لازم نیست — وضعیت پایدار است.</li>'}</ol>`,
         foot: ''
       }))}

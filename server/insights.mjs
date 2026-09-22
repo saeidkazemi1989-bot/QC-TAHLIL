@@ -70,6 +70,11 @@ function fa1(v) {
     .replace(/[0-9]/g, (d) => PERSIAN_DIGITS[Number(d)]);
 }
 function pct(part, whole) { return whole > 0 ? (part / whole) * 100 : 0; }
+/** تاریخِ شمسیِ خوانا: 1405-04-31 ← ۱۴۰۵/۰۴/۳۱ */
+function faDate(v) {
+  if (!v) return '—';
+  return String(v).replace(/-/g, '/').replace(/[0-9]/g, (d) => PERSIAN_DIGITS[Number(d)]);
+}
 function change(cur, prev) {
   if (!prev) return cur > 0 ? null : 0;          // null = «قبلاً وجود نداشته»
   return ((cur - prev) / prev) * 100;
@@ -260,7 +265,7 @@ export function insights(f, source = 'inprocess') {
     };
     base.thresholds = { minCount: 0, spikeMin: 0, ppm: 0, total: 0, basis: 'توضیحات تعمیرات' };
     base.headline = {
-      verdict: 'داده ناکافی', tone: 'muted', alarm_counts: {}, quick: [],
+      verdict: 'داده ناکافی', tone: 'muted', alarm_counts: {}, quick: [], findings: [],
       narrative: 'در این بازه و با این فیلترها عیبی ثبت نشده است؛ بازهٔ تاریخ یا فیلترها را تغییر دهید.',
       kpis: { production: s.production || 0, defects: 0, ppm: 0 }
     };
@@ -918,7 +923,7 @@ export function insights(f, source = 'inprocess') {
           : { text: 'پایدار', tone: 'ok' };
 
   const narrative = [
-    `در بازهٔ ${w.from} تا ${w.to} (${fa(w.days)} روز) در منبع «${SOURCE_LABEL[source]}»، ${fa(total)} عیب روی ${fa(s.production)} دستگاه تولید ثبت شده است (PPM = ${fa(s.ppm)}).`,
+    `در بازهٔ ${faDate(w.from)} تا ${faDate(w.to)} (${fa(w.days)} روز) در منبع «${SOURCE_LABEL[source]}»، ${fa(total)} عیب روی ${fa(s.production)} دستگاه تولید ثبت شده است (PPM = ${fa(s.ppm)}).`,
     ppmChange !== null && ppmPrev > 0
       ? `PPM ${fa(w.win)} روز اخیر ${fa(ppmCur)} و ${fa(w.win)} روز پیش از آن ${fa(ppmPrev)} بوده، یعنی ${arrow(ppmChange)} ${fa1(Math.abs(ppmChange))}٪.`
       : '',
@@ -937,10 +942,76 @@ export function insights(f, source = 'inprocess') {
     base.basis.note && useCode ? base.basis.note : ''
   ].filter(Boolean).join(' ');
 
+  /* ---- یافته‌های تفکیک‌شده: هر عدد در کارتِ خودش با برچسب و جملهٔ جدا ----
+     هدف: خواننده مجبور نباشد از یک پاراگرافِ پیوسته حدس بزند کدام عدد مال کدام توضیح است. */
+  const findings = [];
+  findings.push({
+    icon: '🗓', label: 'بازهٔ تحلیل', tone: 'info',
+    value: fa(w.days), unit: 'روز',
+    text: `از ${faDate(w.from)} تا ${faDate(w.to)} در منبع «${SOURCE_LABEL[source]}»`
+  });
+  findings.push({
+    icon: '🧮', label: 'عیبِ ثبت‌شده', tone: 'info',
+    value: fa(total), unit: 'مورد',
+    text: `روی ${fa(s.production)} دستگاه تولید، در ${fa(s.defect_rows)} ردیف گزارش`
+  });
+  findings.push({
+    icon: '🎯', label: 'نرخ عیب (PPM)', tone: s.ppm > 20000 ? 'danger' : s.ppm > 8000 ? 'warn' : 'ok',
+    value: fa(s.ppm), unit: 'عیب در میلیون دستگاه',
+    text: 'تعداد عیبِ ثبت‌شده به ازای هر یک میلیون دستگاه تولید'
+  });
+  if (ppmChange !== null && ppmPrev > 0) {
+    findings.push({
+      icon: ppmChange < 0 ? '📉' : '📈',
+      label: `روند ${fa(w.win)} روز اخیر`,
+      tone: ppmChange < 0 ? 'ok' : 'danger',
+      value: `${arrow(ppmChange)} ${fa1(Math.abs(ppmChange))}`, unit: '٪ تغییر PPM',
+      text: `PPM ${fa(w.win)} روز اخیر ${fa(ppmCur)} در برابر ${fa(ppmPrev)} در دورهٔ مشابهِ قبلی`,
+      chips: [{ label: 'دورهٔ جاری', value: `PPM ${fa(ppmCur)}` }, { label: 'دورهٔ قبل', value: `PPM ${fa(ppmPrev)}` }]
+    });
+  }
+  if (first && first.key !== 'ثبت نشده') {
+    findings.push({
+      icon: '🥇', label: `بزرگ‌ترین ${basisLabel}`, tone: 'danger',
+      value: first.label,
+      sub: `${fa(first.defects)} عیب = ${fa1(first.share)}٪ کل`,
+      text: 'سهم این مورد از همهٔ عیب‌های بازهٔ انتخابی',
+      chips: [
+        first.products[0] ? { label: 'محصول اول', value: `${first.products[0].label} — ${fa1(first.products[0].pct_of_item)}٪` } : null,
+        first.stages[0] ? { label: 'فرآیند اول', value: `${first.stages[0].label} — ${fa1(first.stages[0].pct_of_item)}٪` } : null,
+        (first.cause6m[0] && first.cause6m[0].key !== 'ثبت نشده')
+          ? { label: 'ریشهٔ 6M', value: `${first.cause6m[0].label} — ${fa1(first.cause6m[0].pct_of_item)}٪` } : null
+      ].filter(Boolean),
+      drill: first.drill
+    });
+  }
+  if (base.top_repair.length >= 5 && topSum < total) {
+    findings.push({
+      icon: '🔟', label: 'اثرِ ده موردِ اول', tone: 'warn',
+      value: fa1(pct(topSum, total)), unit: '٪ از کل عیب‌ها',
+      sub: `${fa(topSum)} عیب در ۱۰ ${basisLabel}`,
+      text: 'با حلِ همین ده مورد، این سهم از بار کیفیت کم می‌شود',
+      drill: { source, page: 'analyst' }
+    });
+  }
+  findings.push({
+    icon: '🚨', label: 'آلارم‌های فعال', tone: counts.critical ? 'danger' : counts.high ? 'warn' : 'ok',
+    value: fa(counts.critical + counts.high), unit: 'آلارم بحرانی/مهم',
+    text: [
+      counts.medium ? `${fa(counts.medium)} آلارم متوسط` : '',
+      counts.low ? `${fa(counts.low)} آلارم کم` : '',
+      counts.good ? `${fa(counts.good)} مورد بهبود` : ''
+    ].filter(Boolean).join(' · ') || 'فقط همین آلارم‌های مهم فعال است'
+  });
+  if (base.basis.note && useCode) {
+    findings.push({ icon: 'ℹ️', label: 'مبنای تحلیل', tone: 'muted', value: base.basis.label || '—', text: base.basis.note });
+  }
+
   base.headline = {
     verdict: verdict.text,
     tone: verdict.tone,
     narrative,
+    findings,
     alarm_counts: counts,
     kpis: {
       production: s.production, defects: total, ppm: s.ppm, scrap_rate: s.scrap_rate,

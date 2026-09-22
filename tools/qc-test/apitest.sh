@@ -61,6 +61,12 @@ chkjson(){ # chkjson <نام> <توکن> <url> <عبارتِ پایتون>
   if echo "$out" | python3 -c "import sys,json;d=json.load(sys.stdin);print(bool($4))" | grep -q True; then pass=$((pass+1));
   else echo "❌ $1 -> $4"; fail=$((fail+1)); fi
 }
+# یافته‌های تفکیک‌شدهٔ تحلیلگر: هر عدد در کارتِ خودش با برچسب و جملهٔ جدا
+for src in inprocess inspection polymer; do
+  chkjson "findings-$src" "$M" "$BASE/api/insights?source=$src" "len(d['headline']['findings'])>=6"
+  chkjson "findings-shape-$src" "$M" "$BASE/api/insights?source=$src" "all(f.get('label') and f.get('value') is not None and f.get('text') for f in d['headline']['findings'])"
+  chkjson "findings-icon-$src" "$M" "$BASE/api/insights?source=$src" "all(f.get('icon') and f.get('tone') for f in d['headline']['findings'])"
+done
 chkjson "admin-files" "$A" "$BASE/api/admin/files" "len(d['files'])>0 and any(f['folder']=='raw' for f in d['files']) and any(f['folder']=='clean' for f in d['files'])"
 chkjson "admin-files-pipeline" "$A" "$BASE/api/admin/files" "d['pipeline']['enabled'] is True and 'state' in d['pipeline']"
 chkjson "admin-pipeline-roles" "$A" "$BASE/api/admin/pipeline" "len(d['raw_roles']['files'])==4 and d['python_ready'] is True"
