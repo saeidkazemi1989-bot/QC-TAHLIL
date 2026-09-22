@@ -55,6 +55,20 @@ done
 echo -n "مدیر ارشد → رکوردها (باید ۴۰۳): "; c=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $M" "$BASE/api/records?source=inprocess"); echo "$c"; [ "$c" = "403" ] && pass=$((pass+1)) || fail=$((fail+1))
 echo -n "مدیر ارشد → مدیریت (باید ۴۰۳): "; c=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $M" "$BASE/api/admin/files"); echo "$c"; [ "$c" = "403" ] && pass=$((pass+1)) || fail=$((fail+1))
 echo -n "بدون توکن (باید ۴۰۱): "; c=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/summary"); echo "$c"; [ "$c" = "401" ] && pass=$((pass+1)) || fail=$((fail+1))
-t "admin-files" "$A" "$BASE/api/admin/files"
+# پاسخِ admin-files کلید «error» (برای نقشِ فایل‌ها) دارد؛ پس با python بررسی می‌شود نه grep
+chkjson(){ # chkjson <نام> <توکن> <url> <عبارتِ پایتون>
+  out=$(curl -s -H "Authorization: Bearer $2" "$3")
+  if echo "$out" | python3 -c "import sys,json;d=json.load(sys.stdin);print(bool($4))" | grep -q True; then pass=$((pass+1));
+  else echo "❌ $1 -> $4"; fail=$((fail+1)); fi
+}
+chkjson "admin-files" "$A" "$BASE/api/admin/files" "len(d['files'])>0 and any(f['folder']=='raw' for f in d['files']) and any(f['folder']=='clean' for f in d['files'])"
+chkjson "admin-files-pipeline" "$A" "$BASE/api/admin/files" "d['pipeline']['enabled'] is True and 'state' in d['pipeline']"
+chkjson "admin-pipeline-roles" "$A" "$BASE/api/admin/pipeline" "len(d['raw_roles']['files'])==4 and d['python_ready'] is True"
+chkjson "admin-pipeline-clean" "$A" "$BASE/api/admin/pipeline" "d['clean_up_to_date'] is True and len(d['clean_files'])>=1"
+chkjson "health-version" "" "$BASE/api/health" "len(d['data_version'])>5 and d['counts']['inprocess']>0"
+chkjson "health-watcher" "" "$BASE/api/health" "d['watcher']['enabled'] is True and d['watcher']['state'] in ('idle','running')"
+chkjson "health-uptodate" "" "$BASE/api/health" "d['watcher']['clean_up_to_date'] is True and d['watcher']['python_ready'] is True"
 t "admin-users" "$A" "$BASE/api/admin/users"
+echo -n "بازسازی بدون توکن (باید ۴۰۱): "; c=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/admin/rebuild"); echo "$c"; [ "$c" = "401" ] && pass=$((pass+1)) || fail=$((fail+1))
+echo -n "بازسازی با نقشِ کارشناس (باید ۴۰۳): "; c=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $E" "$BASE/api/admin/rebuild"); echo "$c"; [ "$c" = "403" ] && pass=$((pass+1)) || fail=$((fail+1))
 echo "-----"; echo "موفق: $pass | ناموفق: $fail"

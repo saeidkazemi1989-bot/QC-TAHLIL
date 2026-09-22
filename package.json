@@ -10,7 +10,9 @@
     "test": "node server/selftest.mjs",
     "export": "node server/export-static.mjs",
     "clean": "node server/clean.mjs",
-    "refresh": "npm run clean && npm run import"
+    "refresh": "npm run clean && npm run import",
+    "test:pipeline": "node tools/qc-test/pipelinetest.mjs",
+    "test:pipeline:e2e": "node tools/qc-test/pipelinetest.mjs --e2e"
   },
   "repository": {
     "type": "git",

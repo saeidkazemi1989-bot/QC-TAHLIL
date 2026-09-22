@@ -17,5 +17,6 @@ if [ ! -d node_modules ]; then
 fi
 
 echo "سرور روی http://localhost:3000 اجرا می‌شود (برای توقف: Ctrl+C)"
+echo "به‌روزرسانی خودکار فعال است: فایل خام تازه را در پوشه data/raw کپی کنید."
 (sleep 2 && (xdg-open http://localhost:3000 2>/dev/null || open http://localhost:3000 2>/dev/null)) &
 npm start

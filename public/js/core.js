@@ -41,6 +41,23 @@ export function faPct(n, digits = 1) {
   return `${faDec(n, digits)}٪`;
 }
 
+/**
+ * تاریخ و ساعتِ خوانا از رشتهٔ ISO (زمانِ محلیِ کاربر، رقم فارسی).
+ * برای «آخرین به‌روزرسانی داده» و وضعیتِ خطِ به‌روزرسانی خودکار.
+ */
+export function faDateTime(v, withSeconds = false) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return faNum(String(v));
+  const opt = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+  if (withSeconds) opt.second = '2-digit';
+  try {
+    return d.toLocaleString('fa-IR', opt);
+  } catch {
+    return faNum(String(v).replace('T', ' ').slice(0, withSeconds ? 19 : 16));
+  }
+}
+
 export function enNum(str) {
   if (str === null || str === undefined) return '';
   return String(str)

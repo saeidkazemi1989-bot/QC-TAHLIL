@@ -12,11 +12,12 @@ import path from 'node:path';
 import multer from 'multer';
 import { fileURLToPath } from 'node:url';
 
-import { getDb, ready as dbReady, getSettings, setSetting, RAW_DIR, ROOT } from './db.mjs';
+import { getDb, ready as dbReady, getSettings, setSetting, RAW_DIR, CLEAN_DIR, ROOT } from './db.mjs';
 import { runImport } from './etl.mjs';
 import { parseFilters } from './filters.mjs';
 import { checkDefectCounts } from './countcheck.mjs';
 import { insights } from './insights.mjs';
+import { refreshAll, rebuildFromRaw, pipelineStatus, startWatcher, computeDataVersion, adoptExistingClean } from './pipeline.mjs';
 import {
   summary, trend, breakdown, pfmea, records, recordColumns,
   productionSummary, productionTrend, productionBreakdown, meta, DIMENSIONS, matrix, times,
@@ -238,8 +239,10 @@ const upload = multer({
 app.post('/api/admin/upload', requireAuth, requireRole('admin'), upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'فایلی دریافت نشد' });
   try {
-    const result = await runImport({ files: [req.file.filename] });
-    res.json({ ok: true, file: req.file.filename, result });
+    // فایل در data/raw ذخیره شده؛ حالا کل زنجیره خودش اجرا می‌شود:
+    // تبدیل با qc.py (اگر لازم باشد) ← بارگذاری در پایگاه ← به‌روزرسانی داشبورد
+    const result = await refreshAll({ reason: `upload:${req.file.filename}` });
+    res.json({ ok: result.ok !== false, file: req.file.filename, result });
   } catch (err) {
     res.status(500).json({ error: String(err.message || err) });
   }
@@ -247,41 +250,61 @@ app.post('/api/admin/upload', requireAuth, requireRole('admin'), upload.single('
 
 app.post('/api/admin/refresh', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const result = await runImport({ removeMissing: true });
-    res.json({ ok: true, result });
+    const result = await refreshAll({ reason: 'manual', forceClean: req.query.force === '1' });
+    res.json({ ok: result.ok !== false, result });
   } catch (err) {
     res.status(500).json({ error: String(err.message || err) });
   }
 });
 
-app.get('/api/admin/files', requireAuth, requireRole('admin'), (req, res) => {
-  const db = getDb();
-  const files = fs.readdirSync(RAW_DIR)
-    .filter((f) => /\.(xlsx|xlsm)$/i.test(f) && !f.startsWith('~$'))
-    .map((f) => {
-      const stat = fs.statSync(path.join(RAW_DIR, f));
-      const rec = db.prepare('SELECT source_type, rows_loaded, imported_at, status, message FROM import_file WHERE file_name = ?').all(f);
-      return {
-        name: f,
-        size: stat.size,
-        modified: stat.mtime.toISOString(),
-        records: rec
-      };
-    });
-  res.json({ files });
+/**
+ * بازسازیِ کامل: همهٔ گزارش‌های تمیزِ data/clean پاک می‌شوند و داده‌ها فقط از
+ * فایل‌های خامِ فعلیِ data/raw از نو ساخته می‌شوند (برای گذر از دادهٔ آزمایشی به واقعی).
+ */
+app.post('/api/admin/rebuild', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const r = await rebuildFromRaw({ reason: 'rebuild' });
+    res.json({ ok: r.ok, message: r.message, removed: r.removed, result: r.result, data_version: r.data_version });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
 });
 
-app.delete('/api/admin/files/:name', requireAuth, requireRole('admin'), (req, res) => {
+/** وضعیت به‌روزرسانی خودکار (برای نمایش در صفحهٔ مدیریت) */
+app.get('/api/admin/pipeline', requireAuth, requireRole('admin'), (req, res) => {
+  res.json(pipelineStatus());
+});
+
+app.get('/api/admin/files', requireAuth, requireRole('admin'), (req, res) => {
+  const db = getDb();
+  const collect = (dir, folder) => (fs.existsSync(dir)
+    ? fs.readdirSync(dir)
+      .filter((f) => /\.(xlsx|xlsm)$/i.test(f) && !f.startsWith('~$'))
+      .map((f) => {
+        const stat = fs.statSync(path.join(dir, f));
+        const rec = db.prepare('SELECT source_type, rows_loaded, imported_at, status, message FROM import_file WHERE file_name = ?').all(f);
+        return { name: f, folder, size: stat.size, modified: stat.mtime.toISOString(), records: rec };
+      })
+    : []);
+  res.json({
+    files: [...collect(RAW_DIR, 'raw'), ...collect(CLEAN_DIR, 'clean')],
+    pipeline: pipelineStatus()
+  });
+});
+
+app.delete('/api/admin/files/:name', requireAuth, requireRole('admin'), async (req, res) => {
   const name = path.basename(req.params.name);
-  const p = path.join(RAW_DIR, name);
-  if (!fs.existsSync(p)) return res.status(404).json({ error: 'فایل یافت نشد' });
+  const p = [RAW_DIR, CLEAN_DIR].map((d) => path.join(d, name)).find((x) => fs.existsSync(x));
+  if (!p) return res.status(404).json({ error: 'فایل یافت نشد' });
   fs.unlinkSync(p);
   const db = getDb();
   db.prepare('DELETE FROM fact_inprocess WHERE src_file = ?').run(name);
   db.prepare('DELETE FROM fact_inspection WHERE src_file = ?').run(name);
   db.prepare('DELETE FROM fact_production WHERE src_file = ?').run(name);
   db.prepare('DELETE FROM import_file WHERE file_name = ?').run(name);
-  res.json({ ok: true });
+  // پس از حذف، آمار و ابعاد دوباره ساخته می‌شود تا عددِ اشتباهی در داشبورد نماند
+  try { await refreshAll({ reason: `delete:${name}`, removeMissing: true }); } catch { /* ignore */ }
+  res.json({ ok: true, deleted: name, data_version: computeDataVersion() });
 });
 
 /** بررسی شمارش عیب‌های فایل جامع کیفیت (تعداد عیب مربوطه در برابر تعداد عیب) */
@@ -359,7 +382,12 @@ app.get('/api/health', (req, res) => {
     production: db.prepare('SELECT COUNT(*) c FROM fact_production').get().c,
     orders: db.prepare('SELECT COUNT(*) c FROM fact_order').get().c
   };
-  res.json({ ok: true, counts });
+  res.json({
+    ok: true,
+    counts,
+    data_version: pipelineStatus().data_version || computeDataVersion(),
+    watcher: pipelineStatus()
+  });
 });
 
 // هر مسیر ناشناخته به رابط کاربری هدایت می‌شود (SPA)
@@ -380,9 +408,16 @@ async function bootstrap() {
       console.error('[server] خطا در بارگذاری خودکار:', err.message);
     }
   }
+  adoptExistingClean();
   app.listen(PORT, HOST, () => {
     console.log(`[server] سامانه گزارشات کیفیت آماده است: http://${HOST}:${PORT}`);
     console.log(`[server] پوشه داده‌ها: ${RAW_DIR}`);
+    if (process.env.QC_WATCH === '0') {
+      console.log('[server] به‌روزرسانی خودکار غیرفعال است (QC_WATCH=0)');
+    } else {
+      startWatcher({ intervalMs: Number(process.env.QC_WATCH_INTERVAL) || 10000 });
+      console.log('[server] به‌روزرسانی خودکار فعال است: فایل تازه در data/raw ⇒ تبدیل + بارگذاری + به‌روزرسانی داشبورد');
+    }
   });
 }
 

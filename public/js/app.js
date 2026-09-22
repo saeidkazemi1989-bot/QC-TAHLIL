@@ -1,5 +1,5 @@
 /* چارچوب اصلی رابط کاربری: ورود، منو، فیلترها، مسیریابی */
-import { api, state, saveSession, logout, faInt, faDec, escapeHtml, el, toast } from './core.js';
+import { api, state, saveSession, logout, faInt, faDec, faDateTime, escapeHtml, el, toast } from './core.js';
 import { PAGES } from './pages.js';
 import { infoPopoverHtml } from './ui.js';
 import { j2d, d2j, formatJalali, parseJalali, toFa, toEn } from './jalali.js';
@@ -75,6 +75,8 @@ async function start() {
     if (!state.user.pages) state.user.pages = state.meta.pages;
     renderShell();
     route();
+    liveVersion = null;          // با ورودِ تازه، نسخهٔ داده از نو مبنا می‌شود
+    startLivePolling();
   } catch (err) {
     console.error(err);
     logout();
@@ -108,10 +110,11 @@ function renderShell() {
         </nav>
         <div class="side-foot">
           <div class="data-status">
-            <span class="dot ok"></span>
+            <span class="dot ok" id="live-dot"></span>
             <div>
               <small>آخرین به‌روزرسانی داده</small>
-              <b>${lastImport ? faInt(lastImport.imported_at.replace('T', ' ').slice(0, 16)) : '—'}</b>
+              <b id="live-time">${faDateTime(lastImport && lastImport.imported_at)}</b>
+              <small class="live-note" id="live-note">در حال بررسی…</small>
             </div>
           </div>
         </div>
@@ -375,6 +378,68 @@ function applyPreset(preset) {
   state.filters.to = to;
   buildFilterBar();
   route(true);
+}
+
+/* ------------------------------------------------ به‌روزرسانی خودکارِ داده‌ها */
+let liveVersion = null;
+let liveTimer = null;
+let liveBusy = false;
+let liveFails = 0;
+
+function setLiveStatus({ kind = 'ok', note = '', time = null }) {
+  const dot = document.getElementById('live-dot');
+  const noteEl = document.getElementById('live-note');
+  const timeEl = document.getElementById('live-time');
+  if (dot) dot.className = 'dot ' + (kind === 'busy' ? 'busy' : kind === 'bad' ? 'bad' : 'ok');
+  if (noteEl) {
+    noteEl.className = 'live-note' + (kind === 'busy' ? ' busy' : kind === 'bad' ? ' bad' : '');
+    noteEl.textContent = note;
+  }
+  if (time && timeEl) timeEl.textContent = faDateTime(time);
+}
+
+/**
+ * هر چند ثانیه وضعیت سرور را می‌پرسد؛ اگر فایل تازه‌ای در data/raw ریخته شده و
+ * سامانه تبدیل + بارگذاری را تمام کرده باشد، صفحهٔ جاری بی‌درنگ به‌روز می‌شود.
+ */
+async function pollHealth() {
+  if (window.__STATIC__ || !state.token || liveBusy) return;
+  liveBusy = true;
+  try {
+    const h = await api('/api/health');
+    liveFails = 0;
+    const w = h.watcher || {};
+    const running = w.state === 'running';
+    setLiveStatus({
+      kind: running ? 'busy' : (w.enabled === false ? 'bad' : 'ok'),
+      note: running ? 'در حال به‌روزرسانی داده‌ها…'
+        : (w.enabled === false ? 'به‌روزرسانی خودکار غیرفعال است' : 'به‌روزرسانی خودکار فعال است'),
+      time: state.meta?.imports?.[0]?.imported_at
+    });
+    // تا پایانِ کارِ سرور صبر می‌کنیم تا دادهٔ نیمه‌بارگذاری‌شده نمایش داده نشود
+    if (running || !h.data_version) return;
+    if (liveVersion === null) { liveVersion = h.data_version; return; }
+    if (liveVersion === h.data_version) return;
+    liveVersion = h.data_version;
+    state.meta = await api('/api/meta');
+    setLiveStatus({ kind: 'ok', note: 'به‌روزرسانی خودکار فعال است', time: state.meta?.imports?.[0]?.imported_at });
+    toast('داده‌های تازه بارگذاری شد؛ صفحه به‌روز شد', 'success');
+    if (document.getElementById('filter-bar')) buildFilterBar();
+    route(true);
+    document.dispatchEvent(new CustomEvent('qc:data-refreshed', { detail: h }));
+  } catch (err) {
+    liveFails += 1;
+    if (liveFails === 3) setLiveStatus({ kind: 'bad', note: 'ارتباط با سرور برقرار نیست' });
+  } finally {
+    liveBusy = false;
+  }
+}
+
+/** آغازِ پرس‌وجوی دوره‌ای (در نسخهٔ تک‌فایل کاری نمی‌کند) */
+export function startLivePolling(ms = 8000) {
+  if (window.__STATIC__) return;
+  if (!liveTimer) liveTimer = setInterval(() => { pollHealth().catch(() => {}); }, ms);
+  pollHealth().catch(() => {});
 }
 
 /* ------------------------------------------------------------------ مسیریابی */

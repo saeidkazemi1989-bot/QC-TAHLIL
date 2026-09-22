@@ -1,5 +1,5 @@
 /* صفحه‌های سامانه: هر صفحه شاخص‌ها، نمودارها و توضیح‌های خود را دارد */
-import { api, filterQuery, faInt, faDec, escapeHtml, downloadCsv, toast, state } from './core.js';
+import { api, filterQuery, faInt, faDec, faDateTime, escapeHtml, downloadCsv, toast, state } from './core.js';
 import { barH, pareto, trendCombo, donut, scatter, deltaBars, productionChart } from './charts.js';
 import {
   cardShell, kpiCard, loadingCard, emptyCard, dataTable, matrixTable, infoPopoverHtml,
@@ -919,6 +919,64 @@ export const recordsPage = {
 };
 
 /* ============================================================ مدیریت سیستم */
+/* ------------------------------------------------ وضعیتِ خطِ به‌روزرسانی خودکار */
+const RAW_ROLE_NAMES = {
+  quality: 'جامع کیفیت حین تولید',
+  defect: 'عیب‌های سند بازرسی',
+  prod: 'تعداد تولید (سند عملکرد)',
+  grouping: 'گروه‌بندی محصولات'
+};
+
+/**
+ * کارتِ وضعیتِ «به‌روزرسانی خودکار»: آیا ناظرِ پوشه فعال است، چهار فایل خام
+ * پیدا شده‌اند، گزارش تمیز منطبق است و پایتون در دسترس هست یا نه.
+ * این تابع هم در رندر نخست و هم در به‌روزرسانیِ زندهٔ هر چند ثانیه استفاده می‌شود.
+ */
+function pipelineStatusHtml(p) {
+  if (!p) return '<div class="explain">وضعیتِ به‌روزرسانی خودکار در دسترس نیست.</div>';
+  const running = p.state === 'running';
+  const tone = running ? 'warn' : (p.state === 'error' ? 'bad' : 'ok');
+  const stateText = running ? 'در حال تبدیل و بارگذاری…' : (p.state === 'error' ? 'آخرین اجرا با خطا' : 'آماده');
+
+  const roles = p.raw_roles && p.raw_roles.files ? p.raw_roles.files : {};
+  const byRole = {};
+  for (const [name, info] of Object.entries(roles)) {
+    if (!info || !info.role) continue;
+    (byRole[info.role] = byRole[info.role] || []).push({ name, t: info.mtime || 0 });
+  }
+  const missing = ['quality', 'defect', 'prod', 'grouping'].filter((r) => !(byRole[r] || []).length);
+  const roleRows = ['quality', 'defect', 'prod', 'grouping'].map((r) => {
+    const list = (byRole[r] || []).sort((a, b) => b.t - a.t);
+    const pick = list[0];
+    const extra = list.length > 1
+      ? '<span class="pill warn">' + faInt(list.length - 1) + ' نسخهٔ قدیمی‌تر نادیده گرفته می‌شود</span>'
+      : '';
+    return '<div class="role-item">' +
+      '<span class="rname">' + RAW_ROLE_NAMES[r] + '</span>' +
+      '<span class="rfile">' + (pick ? escapeHtml(pick.name) : '—') + '</span>' +
+      (pick ? '<span class="pill ok">پیدا شد</span>' : '<span class="pill bad">پیدا نشد</span>') +
+      extra +
+      '</div>';
+  }).join('');
+
+  return [
+    '<div class="pipe-grid">',
+    '<div class="pipe-item ' + tone + '"><small>وضعیت</small><b>' + stateText + '</b></div>',
+    '<div class="pipe-item ' + (p.enabled ? 'ok' : 'bad') + '"><small>ناظرِ پوشه‌ها</small><b>' + (p.enabled ? 'فعال' : 'غیرفعال') + '</b></div>',
+    '<div class="pipe-item ' + (p.clean_up_to_date ? 'ok' : 'warn') + '"><small>گزارشِ تمیز</small><b>' + (p.clean_up_to_date ? 'منطبق با فایل خام' : 'نیاز به تبدیل دارد') + '</b></div>',
+    '<div class="pipe-item ' + (p.python_ready ? 'ok' : 'bad') + '"><small>ابزارِ تبدیل (پایتون)</small><b>' + (p.python_ready ? 'در دسترس' : 'نصب نیست') + '</b></div>',
+    '<div class="pipe-item"><small>آخرین اجرا</small><b>' + faDateTime(p.last_run_at) + '</b></div>',
+    '<div class="pipe-item"><small>اجراهای این نشست</small><b>' + faInt(p.runs || 0) + '</b></div>',
+    '</div>',
+    '<div class="explain"><b>فایل‌های خامِ شناسایی‌شده در پوشهٔ data/raw</b>',
+    '<div class="role-list">' + roleRows + '</div></div>',
+    missing.length
+      ? '<div class="explain warning" style="margin-top:8px">برای تبدیلِ خودکار، هر چهار فایل خام لازم است. کم است: ' + missing.map((m) => RAW_ROLE_NAMES[m]).join('، ') + '</div>'
+      : '',
+    p.last_message ? '<div class="explain" style="margin-top:8px"><small>آخرین پیام: ' + escapeHtml(p.last_message) + '</small></div>' : ''
+  ].join('\n');
+}
+
 export const admin = {
   id: 'admin',
   title: 'مدیریت داده و کاربران',
@@ -933,20 +991,35 @@ export const admin = {
       api('/api/admin/check-counts').catch(() => null)
     ]);
 
+    const pipe = files.pipeline || null;
+    const rawRoles = (pipe && pipe.raw_roles && pipe.raw_roles.files) || {};
     const fileRows = files.files.map((f) => {
-      const rec = f.records[0];
-      const typeLabel = {
-        inprocess: 'عیوب حین تولید', inspection: 'اسناد بازرسی',
-        production: 'تعداد تولید', product: 'گروه‌بندی محصولات'
-      }[rec?.source_type] || rec?.source_type || '—';
-      return {
-        name: f.name,
-        type: typeLabel,
-        rows: rec?.rows_loaded ?? '—',
-        at: (rec?.imported_at || f.modified || '').replace('T', ' ').slice(0, 16),
-        status: rec?.status === 'ok' ? 'موفق' : (rec?.status || '—')
-      };
-    });
+      const rec = (f.records || [])[0];
+      const role = rawRoles[f.name] && rawRoles[f.name].role;
+      const typeLabel = f.folder === 'raw'
+        ? (RAW_ROLE_NAMES[role] || 'ورودی خامِ ابزار تبدیل')
+        : ({
+          inprocess: 'عیوب حین تولید', inspection: 'اسناد بازرسی',
+          production: 'تعداد تولید', product: 'گروه‌بندی محصولات'
+        }[rec && rec.source_type] || (rec && rec.source_type) || 'گزارش تمیز');
+      const st = !rec ? '<span class="pill">—</span>'
+        : rec.status === 'ok' ? '<span class="pill ok">بارگذاری شد</span>'
+          : rec.status === 'info' ? '<span class="pill warn">ورودی خام</span>'
+            : rec.status === 'error' ? '<span class="pill bad">خطا</span>'
+              : '<span class="pill">' + escapeHtml(rec.status) + '</span>';
+      return '<tr>'
+        + '<td>' + escapeHtml(f.name) + '</td>'
+        + '<td><span class="pill ' + (f.folder === 'raw' ? 'warn' : 'ok') + '">' + (f.folder === 'raw' ? 'data/raw' : 'data/clean') + '</span></td>'
+        + '<td>' + typeLabel + '</td>'
+        + '<td>' + (rec && rec.rows_loaded ? faInt(rec.rows_loaded) : '<span class="muted">—</span>') + '</td>'
+        + '<td>' + faDateTime((rec && rec.imported_at) || f.modified) + '</td>'
+        + '<td>' + st + '</td>'
+        + '<td><button class="btn-danger" data-del="' + escapeHtml(f.name) + '">حذف</button></td>'
+        + '</tr>';
+    }).join('');
+    const filesTable = '<div class="table-wrap" style="max-height:340px"><table class="data-table">'
+      + '<thead><tr><th>فایل</th><th>پوشه</th><th>نقش / نوع</th><th>ردیف‌ها</th><th>آخرین بارگذاری</th><th>وضعیت</th><th></th></tr></thead>'
+      + '<tbody>' + (fileRows || '<tr><td colspan="7" class="muted">فایلی در پوشه‌های داده نیست</td></tr>') + '</tbody></table></div>';
 
     const countsBody = () => {
       if (!counts || !counts.ok) {
@@ -983,33 +1056,34 @@ export const admin = {
           body: countsBody()
         })}
         ${cardShell({
-          title: 'به‌روزرسانی داده‌ها',
-          subtitle: 'فایل اکسل جدید را بارگذاری کنید یا همه فایل‌های پوشه را دوباره بخوانید',
+          title: 'به‌روزرسانی خودکارِ داده‌ها',
+          subtitle: 'فایل خام را در پوشهٔ data/raw کپی کنید؛ سامانه خودش تبدیل، بارگذاری و داشبورد را به‌روز می‌کند',
           info: 'inprocess',
           body: `
+            <div id="pipeline-box">${pipelineStatusHtml(pipe)}</div>
             <div class="upload-area" id="upload-area">
               <input type="file" id="file-input" accept=".xlsx,.xlsm" hidden />
               <div class="upload-icon">📥</div>
               <p>فایل اکسل را اینجا رها کنید یا <button class="btn-link" id="pick-file">انتخاب فایل</button></p>
-              <small>فرمت‌های پشتیبانی‌شده: گزارش کیفیت حین تولید، گزارش عیب‌های سند بازرسی،
-              گزارش تعداد تولید، گروه‌بندی محصولات (تشخیص بر اساس ستون‌ها انجام می‌شود)</small>
+              <small>راهِ ساده‌تر: فایل را مستقیم در پوشهٔ <b>data/raw</b> کپی کنید — ناظرِ پوشه بدون هیچ کلیک،
+              خودش تبدیل و بارگذاری می‌کند و همهٔ صفحه‌ها بی‌درنگ به‌روز می‌شوند.
+              اگر چند نسخه از یک فایل باشد، جدیدترین (بر اساس زمانِ ویرایش) به کار می‌رود.</small>
             </div>
             <div class="row-actions">
-              <button class="btn btn-primary" id="btn-refresh">به‌روزرسانی همه داده‌ها</button>
-              <span class="hint">فایل‌های تازه را در پوشه data/raw بریزید و این دکمه را بزنید</span>
+              <button class="btn btn-primary" data-act="refresh">به‌روزرسانی فوری</button>
+              <button class="btn-mini" data-act="force">تبدیلِ دوبارهٔ فایل خام (اجباری)</button>
+              <button class="btn-danger" data-act="rebuild" style="padding:5px 11px;font-size:12px">بازسازی کامل از فایل‌های خام</button>
+              <span class="hint">به‌روزرسانی فوری: تبدیل فقط وقتی لازم باشد. بازسازی کامل: همهٔ گزارش‌های تمیزِ قدیمی پاک
+              می‌شوند و داشبورد فقط از فایل‌های خامِ فعلی ساخته می‌شود (برای گذر از دادهٔ آزمایشی به دادهٔ واقعی).</span>
             </div>
             <div id="upload-result"></div>
           `
         })}
         ${cardShell({
-          title: 'فایل‌های بارگذاری‌شده',
-          subtitle: 'وضعیت هر فایل و تعداد ردیف‌های خوانده‌شده',
-          body: dataTable({
-            columns: { name: 'فایل', type: 'نوع داده', rows: 'ردیف‌ها', at: 'آخرین بارگذاری', status: 'وضعیت' },
-            rows: fileRows,
-            maxHeight: '300px'
-          }),
-          foot: 'حذف فایل باعث حذف داده‌های همان فایل از پایگاه داده می‌شود'
+          title: 'فایل‌های داده (خام و تمیز)',
+          subtitle: 'فایل‌های پوشهٔ data/raw و گزارش‌های تمیزِ data/clean با وضعیت بارگذاری',
+          body: filesTable,
+          foot: 'حذفِ فایل، داده‌های همان فایل را از پایگاه داده پاک می‌کند و آمار بلافاصله دوباره ساخته می‌شود'
         })}
       `)}
       ${grid(2, `
@@ -1090,17 +1164,87 @@ export const admin = {
       }
     }
 
-    root.querySelector('#btn-refresh').addEventListener('click', async (e) => {
-      e.target.disabled = true;
-      e.target.textContent = 'در حال به‌روزرسانی…';
+    // --- به‌روزرسانی فوری / تبدیلِ اجباری
+    async function doRefresh(force) {
+      const btns = Array.from(root.querySelectorAll('[data-act]'));
+      btns.forEach((b) => { b.disabled = true; });
+      const box = root.querySelector('#pipeline-box');
+      if (box) box.innerHTML = pipelineStatusHtml({ ...(pipe || {}), state: 'running' });
       try {
-        const res = await api('/api/admin/refresh', { method: 'POST' });
-        toast(`به‌روزرسانی انجام شد: ${faInt(res.result.totals.inprocess + res.result.totals.inspection + res.result.totals.production)} ردیف`);
+        const res = await api('/api/admin/refresh' + (force ? '?force=1' : ''), { method: 'POST' });
+        const r = res && res.result ? res.result : {};
+        const tot = (r.import && r.import.totals) || {};
+        const n = (tot.inprocess || 0) + (tot.inspection || 0) + (tot.production || 0);
+        if (r.ok === false) toast('به‌روزرسانی با هشدار انجام شد: ' + (r.message || ''), 'error');
+        else toast('به‌روزرسانی انجام شد: ' + faInt(n) + ' ردیف', 'success');
         admin.render(root);
       } catch (err) {
         toast(err.message, 'error');
+        btns.forEach((b) => { b.disabled = false; });
+        admin.render(root);
       }
+    }
+    root.querySelectorAll('[data-act]').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (b.dataset.act === 'rebuild') return doRebuild();
+        return doRefresh(b.dataset.act === 'force');
+      });
     });
+
+    // --- بازسازیِ کامل: پاک‌کردن گزارش‌های تمیز و ساخت دوباره از فایل‌های خامِ فعلی
+    async function doRebuild() {
+      const sure = window.confirm(
+        'بازسازی کامل؟\n\nهمهٔ گزارش‌های تمیزِ پوشهٔ data/clean پاک می‌شوند و داشبورد فقط از\n'
+        + 'فایل‌های خامِ فعلیِ data/raw از نو ساخته می‌شود (چند ده ثانیه طول می‌کشد).\n\n'
+        + 'فایل‌های خام پاک نمی‌شوند. ادامه می‌دهید؟'
+      );
+      if (!sure) return;
+      const btns = Array.from(root.querySelectorAll('[data-act]'));
+      btns.forEach((b) => { b.disabled = true; });
+      const box = root.querySelector('#pipeline-box');
+      if (box) box.innerHTML = pipelineStatusHtml({ ...(pipe || {}), state: 'running' });
+      toast('بازسازی کامل آغاز شد؛ ممکن است چند ده ثانیه طول بکشد…');
+      try {
+        const res = await api('/api/admin/rebuild', { method: 'POST' });
+        const tot = res?.result?.import?.totals || {};
+        const n = (tot.inprocess || 0) + (tot.inspection || 0) + (tot.production || 0);
+        if (res && res.ok === false) toast('بازسازی با هشدار انجام شد: ' + (res.message || ''), 'error');
+        else toast('بازسازی کامل انجام شد: ' + faInt(n) + ' ردیف از ' + faInt((res.removed || []).length) + ' گزارشِ پاک‌شده', 'success');
+        admin.render(root);
+      } catch (err) {
+        toast(err.message, 'error');
+        admin.render(root);
+      }
+    }
+
+    // --- حذفِ فایل (از data/raw یا data/clean)
+    root.querySelectorAll('[data-del]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const name = b.dataset.del;
+        if (!window.confirm('حذفِ «' + name + '»؟\nداده‌های این فایل از پایگاه داده پاک می‌شود و آمار دوباره ساخته می‌شود.')) return;
+        b.disabled = true;
+        b.textContent = 'در حال حذف…';
+        try {
+          await api('/api/admin/files/' + encodeURIComponent(name), { method: 'DELETE' });
+          toast('فایل حذف و داده‌ها به‌روز شد', 'success');
+          admin.render(root);
+        } catch (err) {
+          toast(err.message, 'error');
+          b.disabled = false;
+          b.textContent = 'حذف';
+        }
+      });
+    });
+
+    // --- وضعیتِ زندهٔ خطِ به‌روزرسانی (هر ۴ ثانیه تا وقتی این صفحه باز است)
+    if (root.__pipeTimer) clearInterval(root.__pipeTimer);
+    root.__pipeTimer = setInterval(async () => {
+      const box = document.getElementById('pipeline-box');
+      if (!box) { clearInterval(root.__pipeTimer); root.__pipeTimer = null; return; }
+      try {
+        box.innerHTML = pipelineStatusHtml(await api('/api/admin/pipeline'));
+      } catch { /* سرور مشغولِ تبدیل است؛ دفعهٔ بعد */ }
+    }, 4000);
 
     root.querySelector('#u-save').addEventListener('click', async () => {
       const body = {
@@ -1364,18 +1508,31 @@ export const guide = {
         })}
         ${cardShell({
           title: 'چطور داده‌ها را به‌روز کنم؟',
+          subtitle: 'فقط فایل خام را در پوشهٔ data/raw کپی کنید — بقیه‌اش خودکار است',
           body: `
             <div class="explain">
               <ol>
-                <li>فایل‌های خام جدید را از راهکاران بگیرید و در پوشه <code>data/raw</code> بگذارید.</li>
-                <li>دستور <b><code>npm run refresh</code></b> را اجرا کنید (یا از صفحه مدیریت داده، فایل تمیز را بارگذاری کنید).
-                    این دستور ابتدا گزارش‌ها را تمیز و سپس در پایگاه بارگذاری می‌کند.</li>
-                <li>اگر ترجیح می‌دهید خودتان ابزار تبدیل (qc.py) را اجرا کنید، خروجی را در پوشه <code>data/clean</code> قرار دهید
-                    و فقط <b><code>npm run import</code></b> را بزنید.</li>
-                <li>ردیف‌های هر فایل جایگزین می‌شوند و داده‌های تکراریِ بین گزارش‌ها دوباره شمرده نمی‌شوند.</li>
-                <li>برای به‌روزرسانی نسخه تک‌فایل، <b><code>npm run export</code></b> را اجرا کنید.</li>
+                <li>چهار فایل خامِ راهکاران را در پوشه <code>data/raw</code> کپی یا جایگزین کنید:
+                    جامع کیفیت حین تولید، عیب‌های سند بازرسی، تعداد تولید به تفکیک سند عملکرد، گروه‌بندی محصولات.</li>
+                <li>سامانه تا چند ثانیه بعد <b>خودش</b> ابزار تبدیل (<code>qc.py</code>) را اجرا می‌کند، گزارش تمیز را در
+                    <code>data/clean</code> می‌سازد، داده‌ها را بارگذاری می‌کند و همهٔ صفحه‌ها را با پیامِ
+                    «داده‌های تازه بارگذاری شد» به‌روز می‌کند. هیچ دستوری لازم نیست.</li>
+                <li>وضعیت را در نوارِ کناری ببینید: «به‌روزرسانی خودکار فعال است» و در جریانِ کار
+                    «در حال به‌روزرسانی داده‌ها…» (در این مدت داشبورد باز و قابل استفاده می‌ماند).</li>
+                <li>اگر چند نسخه از یک فایل در پوشه باشد، <b>جدیدترین</b> (بر اساس زمانِ ویرایش) به کار می‌رود و
+                    نسخه‌های قدیمی‌تر نادیده گرفته می‌شوند.</li>
+                <li>صفحهٔ «مدیریت داده و کاربران» جزئیات را نشان می‌دهد: نقشِ هر فایل خام، منطبق بودنِ گزارش تمیز،
+                    زمانِ آخرین اجرا، و دکمهٔ حذفِ فایلِ اضافی (حذف، آمار را هم همان لحظه درست می‌کند).</li>
+                <li>حوصلهٔ انتظار ندارید؟ همان‌جا «به‌روزرسانی فوری» را بزنید؛ «تبدیلِ دوبارهٔ فایل خام (اجباری)»
+                    تبدیل را حتی وقتی لازم نیست از اول اجرا می‌کند.</li>
+                <li>اگر ترجیح می‌دهید خودتان ابزار تبدیل را اجرا کنید، خروجی را در <code>data/clean</code> بگذارید —
+                    سامانه همان را هم خودش می‌بیند و بارگذاری می‌کند.</li>
+                <li>برای به‌روزرسانی نسخهٔ تک‌فایل (<code>QC-Dashboard.html</code>)، <code>npm run export</code> را اجرا کنید.</li>
               </ol>
-              <p class="hint">نیازی به تغییر کد یا ساخت دوباره پایگاه داده نیست.</p>
+              <p class="hint">دستورهای خط فرمان هم سرِ جای خود هستند: <code>npm run refresh</code> (تبدیل + بارگذاری) و
+              <code>npm run import</code> (فقط بارگذاری) — برای کارِ روزمره لازم نیستند.</p>
+              <p class="hint">ردیف‌های هر فایل جایگزین می‌شوند و دادهٔ تکراریِ بین گزارش‌ها دوباره شمرده نمی‌شود؛
+              نیاز به تغییر کد یا ساختِ دوبارهٔ پایگاه داده نیست.</p>
             </div>`
         })}
       `)}
