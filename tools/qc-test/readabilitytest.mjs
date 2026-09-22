@@ -174,6 +174,18 @@ await window.eval(`window.__UI.sectionNav(document.getElementById('page-root'))`
 await wait(200);
 ok('اجرای دوبارهٔ نوار، نسخهٔ تکراری نمی‌سازد', navRoot.querySelectorAll(':scope > .sec-nav').length === 1,
   String(navRoot.querySelectorAll(':scope > .sec-nav').length));
+// راهنما: دسته‌بندی کد کالا دیگر متنِ پیوسته نیست
+await window.eval(`(async () => { await window.__PAGES.guide.render(document.getElementById('page-root')); })()`);
+await wait(3000);
+const gRoot = window.document.getElementById('page-root');
+const catTable = gRoot.querySelector('.cat-table');
+ok('دسته‌بندی کد کالا در راهنما جدول شد (نه متنِ پیوسته)', !!catTable);
+ok('جدولِ دسته‌ها سه دستهٔ الکترونیک/پلیمر/EMS را جدا نشان می‌دهد',
+  !!catTable && ['الکترونیک', 'پلیمر', 'EMS'].every((c) => catTable.textContent.includes(c)));
+ok('کدهای زیرمجموعه تراشهٔ جدا شدند', !!catTable && catTable.querySelectorAll('.num').length >= 10,
+  String(catTable ? catTable.querySelectorAll('.num').length : 0));
+ok('کدهای مستثنی (۱۳۰ و ۷۳۰) در همان جدول آمده', !!catTable && catTable.textContent.includes('۱۳۰') && catTable.textContent.includes('۷۳۰'));
+
 // صفحهٔ تک‌کارتی نوار نمی‌گیرد
 await window.eval(`(async () => { await window.__PAGES.drill.render(document.getElementById('page-root')); })()`);
 await wait(2500);

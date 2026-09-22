@@ -678,8 +678,8 @@ export const pfmea = {
         title: 'چه می‌گوید؟',
         subtitle: 'هرچه RPN بزرگ‌تر باشد، اقدام اصلاحی فوری‌تر است',
         body: `<div class="explain">
-            <p><b>RPN</b> حاصل‌ضرب سه امتیاز است: <b>شدت</b> اثر خرابی (S)، <b>وقوع</b> یا تکرارپذیری (O) و <b>توانایی تشخیص</b> (D).
-            هر کدام از ۱ تا ۱۰ امتیاز می‌گیرند. به‌طور معمول RPN بالای ۱۰۰ نیازمند اقدام اصلاحی فوری است.</p>
+            <p><b>RPN</b> حاصل‌ضرب سه امتیاز است: <b>شدت</b> اثر خرابی (S)، <b>وقوع</b> یا تکرارپذیری (O) و <b>توانایی تشخیص</b> (D).</p>
+            <p>هر کدام از <b class="num">۱</b> تا <b class="num">۱۰</b> امتیاز می‌گیرند؛ به‌طور معمول RPN بالای <b class="num">۱۰۰</b> نیازمند اقدام اصلاحی فوری است.</p>
           </div>`
       }))}
       ${grid(2, `
@@ -1494,11 +1494,23 @@ export const guide = {
                 <li><b>تست نهایی ELE، تست نهایی EMS، کنترل نهایی EMS</b> — عیوب اسناد بازرسی.</li>
                 <li><b>پلیمر</b> — کالاهایی که کدشان با ۲ شروع می‌شود (عیب از سند بازرسی + ضایعاتِ همان سند عملکرد).</li>
               </ul>
-              <p><b>دسته‌بندی کد کالا:</b> رقم اول کد، دسته محصول را مشخص می‌کند:
-              <b>۱ = الکترونیک</b> (۱۲۰ SMD، ۱۲۱ مونتاژ/وان قلع، ۱۲۲ تکمیل کاری، ۱۲۳ کنترل نهایی، ۱۳۰ محصول کامل)،
-              <b>۲ = پلیمر</b> (۲۲۱ چاپ و لیزر دایال، ۲۲۲ تزریق و کنترل نهایی دایال، ۲۲۵ قطعات نیمه‌ساخته، ۲۳۲ تزریق قطعات، ۲۳۳ تزریق سنگین)،
-              <b>۳ = EMS</b> (۳۲۰، ۳۳۱، ۳۳۲). کدهای ۱۳۰ (محصول کامل) و ۷۳۰ (دسته‌سیم) در هیچ شیتی نمی‌آیند.
-              در نمودارهای «دسته محصول» و «زیرگروه محصول» همین تقسیم‌بندی را می‌بینید.</p>
+              <p><b>دسته‌بندی کد کالا:</b> رقمِ اولِ کد، دستهٔ محصول را مشخص می‌کند:</p>
+              <table class="tbl cat-table"><thead><tr><th>رقمِ اول</th><th>دستهٔ محصول</th><th>بخش‌های زیرمجموعه</th><th>در داشبورد</th></tr></thead>
+                <tbody>
+                  <tr><td><b class="num">۱</b></td><td><b>الکترونیک</b></td>
+                      <td><b class="num">۱۲۰</b> SMD · <b class="num">۱۲۱</b> مونتاژ/وان قلع · <b class="num">۱۲۲</b> تکمیل کاری · <b class="num">۱۲۳</b> کنترل نهایی</td>
+                      <td>دستهٔ «الکترونیک»</td></tr>
+                  <tr><td><b class="num">۲</b></td><td><b>پلیمر</b></td>
+                      <td><b class="num">۲۲۱</b> چاپ و لیزر دایال · <b class="num">۲۲۲</b> تزریق و کنترل نهایی دایال · <b class="num">۲۲۵</b> قطعات نیمه‌ساخته · <b class="num">۲۳۲</b> تزریق قطعات · <b class="num">۲۳۳</b> تزریق سنگین</td>
+                      <td>دستهٔ «پلیمر»</td></tr>
+                  <tr><td><b class="num">۳</b></td><td><b>EMS</b></td>
+                      <td><b class="num">۳۲۰</b> · <b class="num">۳۳۱</b> · <b class="num">۳۳۲</b></td>
+                      <td>دستهٔ «EMS»</td></tr>
+                  <tr><td><b class="num">۱۳۰</b></td><td>محصولِ کامل</td><td>—</td><td>مستثنی: در هیچ شیتی نمی‌آید</td></tr>
+                  <tr><td><b class="num">۷۳۰</b></td><td>دسته‌سیم</td><td>—</td><td>مستثنی: در هیچ شیتی نمی‌آید</td></tr>
+                </tbody>
+              </table>
+              <p>در نمودارهای «دستهٔ محصول» و «زیرگروه محصول» همین تقسیم‌بندی را می‌بینید.</p>
               <p>در هر بخش، ردیف‌های عیب و ردیف‌های تولید کنار هم هستند؛ به همین دلیل مخرجِ PPM هر بخش
               دقیقاً از همان مراکز کاریِ خودش گرفته می‌شود.</p>
               <p><b>نام محصول:</b> هر محصول چند کد دارد (هر کد یک مرحله تولید). جلوی نام محصول، مرحله آن
@@ -1813,7 +1825,7 @@ export const analyst = {
 
       ${grid(1, cardShell({
         title: '🧠 نتیجهٔ تحلیل — کلیات اول، بدون گشتن',
-        subtitle: `${sourceNote()} · پایهٔ تحلیل: «${basisLabel}» · بازهٔ مقایسه: ${faInt(r.range?.window_days || 0)} روز اخیر در برابر ${faInt(r.range?.window_days || 0)} روز پیش از آن`,
+        subtitle: highlightNums(`${sourceNote()} · پایهٔ تحلیل: «${basisLabel}» · بازهٔ مقایسه: ${faInt(r.range?.window_days || 0)} روز اخیر در برابر ${faInt(r.range?.window_days || 0)} روز پیش از آن`),
         info: 'analyst',
         className: 'analyst-head',
         actions: '<button class="btn btn-ghost" id="an-csv-alarms">خروجی آلارم‌ها (CSV)</button>',
@@ -1872,7 +1884,7 @@ export const analyst = {
                 </div>
               </details>`).join('')}
           </div></div>`,
-        foot: `ده مورد اول با هم ${faInt((r.top_repair || []).reduce((s, x) => s + x.defects, 0))} عیب را می‌سازند.`
+        foot: highlightNums(`ده مورد اول با هم ${faInt((r.top_repair || []).reduce((s, x) => s + x.defects, 0))} عیب را می‌سازند.`)
       }))}
 
       ${grid(1, cardShell({
@@ -1901,7 +1913,7 @@ export const analyst = {
       ${grid(2, `
         ${cardShell({
           title: 'محصولات پرعیب و PPM آن‌ها',
-          subtitle: `مقایسه با میانهٔ محصولاتِ هم‌حجم (${faInt(r.peer_ppm || 0)}) — نه با میانگین کل`,
+          subtitle: highlightNums(`مقایسه با میانهٔ محصولاتِ هم‌حجم (${faInt(r.peer_ppm || 0)}) — نه با میانگین کل`),
           body: dataTable({
             columns: { product: 'محصول', defects: 'عیوب', share_pct: 'سهم', production: 'تولید', ppm: 'PPM', vs_peers: 'نسبت به میانه', trend: 'روند اخیر' },
             rows: productRows, maxHeight: '360px'
