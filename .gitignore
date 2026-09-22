@@ -8,3 +8,14 @@ __pycache__/
 *.pyc
 tools/qc-test/node_modules/
 tools/qc-test/testbundle.js
+
+# --- فایل‌های ساختنی/حجیم (در گیت نگه داشته نمی‌شوند) ---
+# خروجی تک‌فایل آفلاین: با «npm run export» ساخته می‌شود
+QC-Dashboard.html
+# گزارش‌های تمیز: ناظرِ پوشه با qc.py از data/raw می‌سازد
+data/clean/
+# فایل‌های اکسلِ ول‌شده در ریشه (جای درست: data/raw)
+/*.xlsx
+# فایل‌های باینری حجیم
+*.pbix
+*.zip
