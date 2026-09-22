@@ -118,6 +118,12 @@ ok('هر آلارم بیش از یک سطرِ جدا دارد',
   Array.from(bodies).some((x) => x.querySelectorAll('li').length >= 2));
 ok('عددها در متن برجسته (تراشهٔ عدد) شده‌اند', root.querySelectorAll('.alarm-body .num').length > 10,
   String(root.querySelectorAll('.alarm-body .num').length));
+// عددِ چسبیده به حرف نباید برجسته شود (وگرنه «6M» و «ICN1» می‌شکنند)
+const htmlNow = root.innerHTML;
+ok('تراشهٔ عدد به حرفِ لاتین نمی‌چسبد (۶M نشکسته)', !/<b class="num">[^<]*<\/b>[A-Za-z]/.test(htmlNow));
+ok('حرفِ لاتین قبلِ تراشهٔ عدد نمی‌آید (ICN1 نشکسته)', !/[A-Za-z]<b class="num">/.test(htmlNow));
+ok('هیچ تراشهٔ عددی حرفِ لاتین داخلش نیست',
+  Array.from(root.querySelectorAll('.num')).every((n) => !/[A-Za-z]/.test(n.textContent)));
 ok('نشانگرِ رنگیِ هر سطر بر اساسِ شدتِ آلارم است',
   root.querySelectorAll('.sent-list.tone-high, .sent-list.tone-critical, .sent-list.tone-medium').length > 0);
 ok('متنِ پیوستهٔ قدیم فقط در بخشِ بازشو باقی مانده', !!root.querySelector('.narrative-more > summary'));
