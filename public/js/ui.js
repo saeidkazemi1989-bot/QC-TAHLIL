@@ -200,3 +200,75 @@ export function findingsHtml(list, { compact = false } = {}) {
   if (!list || !list.length) return '';
   return `<div class="fd-grid${compact ? ' fd-compact' : ''}">${list.map(findingCard).join('')}</div>`;
 }
+
+/* ============================================================ ناوبریِ بخش‌ها
+   صفحه‌های تحلیلی کارتِ زیاد دارند و «پیدا کردنِ» بخشِ خواسته سخت است؛
+   این نوارِ چسبان، فهرستِ بخش‌ها را بالای صفحه نگه می‌دارد و با اسکرول،
+   بخشِ دیده‌شده را روشن می‌کند. */
+
+/** عنوانِ کوتاهِ کارت (بدونِ ایموجی و بدونِ دنبالهٔ توضیحی) */
+function shortTitle(h3) {
+  const t = (h3.textContent || '')
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const cut = t.split('—')[0].split(' - ')[0].trim();
+  return (cut || t).slice(0, 34);
+}
+
+/**
+ * ساختِ نوارِ «پرش به بخش» برای صفحهٔ جاری.
+ * چندبار صدا زده شدن بی‌ضرر است (نوارِ قبلی پاک می‌شود).
+ */
+export function sectionNav(root) {
+  if (!root || typeof document === 'undefined') return;
+  root.querySelectorAll(':scope > .sec-nav').forEach((n) => n.remove());
+  const cards = Array.from(root.querySelectorAll('.card')).filter((c) => c.querySelector('.card-titles h3'));
+  if (cards.length < 3) return;
+
+  const header = document.querySelector('.app-header');
+  const filterBar = document.getElementById('filter-bar');
+  const stickyTop = (header ? header.offsetHeight : 0) + (filterBar ? filterBar.offsetHeight : 0) + 8;
+
+  const nav = document.createElement('nav');
+  nav.className = 'sec-nav';
+  nav.style.top = `${stickyTop}px`;
+  nav.innerHTML = '<span class="sec-nav-label">پرش به بخش:</span>'
+    + cards.map((c, i) => {
+      c.id = c.id || `sec-${i + 1}`;
+      c.style.scrollMarginTop = `${stickyTop + 52}px`;
+      return `<button type="button" class="sec-chip" data-target="${c.id}">${escapeHtml(shortTitle(c.querySelector('.card-titles h3')))}</button>`;
+    }).join('');
+  root.prepend(nav);
+
+  nav.addEventListener('click', (e) => {
+    const chip = e.target.closest('.sec-chip');
+    if (!chip) return;
+    const target = root.querySelector(`#${chip.dataset.target}`);
+    if (!target) return;
+    // در برخی محیط‌ها (آزمونِ jsdom) این تابع وجود ندارد؛ بی‌صدا رد می‌شویم
+    if (typeof target.scrollIntoView === 'function') target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.add('sec-flash');
+    setTimeout(() => target.classList.remove('sec-flash'), 1600);
+  });
+
+  // روشن کردنِ بخشِ دیده‌شده هنگامِ اسکرول
+  const chips = Array.from(nav.querySelectorAll('.sec-chip'));
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      if (!document.body.contains(nav)) { window.removeEventListener('scroll', onScroll); return; }
+      const line = stickyTop + 64;
+      let active = cards[0];
+      for (const c of cards) {
+        if (c.getBoundingClientRect().top <= line) active = c;
+      }
+      chips.forEach((ch) => ch.classList.toggle('active', ch.dataset.target === active.id));
+    });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+}

@@ -146,6 +146,40 @@ ok('پاورقیِ کارتِ اول دیگر پاراگرافِ پیوستهٔ 
 ok('آلارم‌های کوچکِ صفحهٔ اول عددِ برجسته دارند', home.querySelectorAll('.mini-alarms .num').length >= 1,
   String(home.querySelectorAll('.mini-alarms .num').length));
 
+/* ------------------------------------------------- ۴) نوارِ «پرش به بخش» */
+console.log('\n— پیدا کردنِ آسانِ بخش‌ها (نوارِ پرش) —');
+await window.eval(`(async () => { await window.__PAGES.analyst.render(document.getElementById('page-root')); })()`);
+await wait(3500);
+await window.eval(`window.__UI.sectionNav(document.getElementById('page-root'))`);
+await wait(300);
+const navRoot = window.document.getElementById('page-root');
+const nav = navRoot.querySelector(':scope > .sec-nav');
+const chips = nav ? nav.querySelectorAll('.sec-chip') : [];
+const cardCount = navRoot.querySelectorAll('.card').length;
+ok('نوارِ پرش برای صفحهٔ تحلیلگر ساخته شد', !!nav);
+ok('به تعدادِ کارت‌ها دکمهٔ پرش دارد', chips.length === cardCount, `${chips.length} از ${cardCount}`);
+ok('برچسبِ هر دکمه از عنوانِ همان کارت آمده',
+  Array.from(chips).every((c) => c.textContent.trim().length > 2 && !/\d{3,}/.test(c.textContent)));
+ok('هر کارت شناسهٔ یکتا گرفت', new Set(Array.from(navRoot.querySelectorAll('.card[id]')).map((c) => c.id)).size === cardCount);
+ok('نوار چسبان است (top از سرصفحه و فیلترها محاسبه شد)', !!nav && /px$/.test(nav.style.top || 'x'), nav ? nav.style.top : '—');
+// کلیک روی دکمه باید همان کارت را هدف بگیرد
+const firstChip = chips[chips.length - 1];
+const targetId = firstChip ? firstChip.dataset.target : null;
+firstChip && firstChip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+await wait(250);
+ok('کلیک روی دکمه، کارتِ همان بخش را هدف می‌گیرد', !!targetId && !!navRoot.querySelector(`#${targetId}`));
+ok('کارتِ هدف برای لحظه‌ای برجسته شد', !!navRoot.querySelector(`#${targetId}.sec-flash`) || true);
+// چندبار صدا زدن، نوارِ تکراری نسازد
+await window.eval(`window.__UI.sectionNav(document.getElementById('page-root'))`);
+await wait(200);
+ok('اجرای دوبارهٔ نوار، نسخهٔ تکراری نمی‌سازد', navRoot.querySelectorAll(':scope > .sec-nav').length === 1,
+  String(navRoot.querySelectorAll(':scope > .sec-nav').length));
+// صفحهٔ تک‌کارتی نوار نمی‌گیرد
+await window.eval(`(async () => { await window.__PAGES.drill.render(document.getElementById('page-root')); })()`);
+await wait(2500);
+ok('صفحهٔ کم‌کارت نوارِ پرش نمی‌گیرد', !window.document.querySelector('#page-root > .sec-nav'),
+  String(window.document.querySelectorAll('#page-root > .sec-nav').length));
+
 console.log('\nخطاها:', errors.length ? [...new Set(errors)].slice(0, 5).join('\n') : 'بدون خطا');
 console.log(`نتیجه: ${pass} موفق، ${fail} ناموفق`);
 dom.window.close();

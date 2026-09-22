@@ -1,7 +1,7 @@
 /* چارچوب اصلی رابط کاربری: ورود، منو، فیلترها، مسیریابی */
 import { api, state, saveSession, logout, faInt, faDec, faDateTime, escapeHtml, el, toast } from './core.js';
 import { PAGES } from './pages.js';
-import { infoPopoverHtml } from './ui.js';
+import { infoPopoverHtml, sectionNav } from './ui.js';
 import { j2d, d2j, formatJalali, parseJalali, toFa, toEn } from './jalali.js';
 
 const PAGE_META = {
@@ -462,7 +462,12 @@ function route(force = false) {
   document.querySelectorAll('.side-link').forEach((a) => {
     a.classList.toggle('active', a.dataset.page === id);
   });
-  if (page) page.render(root);
+  if (page) {
+    // پس از پایانِ رندر، نوارِ «پرش به بخش» ساخته می‌شود (پیدا کردنِ آسانِ بخش‌ها)
+    Promise.resolve(page.render(root))
+      .then(() => { if (currentPage() === id) sectionNav(root); })
+      .catch(() => { /* خطای رندر در خودِ صفحه گزارش می‌شود */ });
+  }
   if (force) buildFilterBar();
 }
 
