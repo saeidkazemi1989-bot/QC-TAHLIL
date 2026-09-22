@@ -372,6 +372,17 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), (req, res) => 
 });
 
 // ---------------------------------------------------------------- فایل‌های ثابت
+/* دانلودِ نسخهٔ تک‌فایلِ آفلاین، بدونِ نیاز به کلون کردنِ ریپو.
+   این فایل در گیت ترک نمی‌شود (حجیم و ساختنی است)؛ با «npm run export» ساخته می‌شود. */
+app.get('/offline.html', (req, res) => {
+  const file = path.resolve(PUBLIC_DIR, '..', 'QC-Dashboard.html');
+  if (!fs.existsSync(file)) {
+    return res.status(404).type('text/plain; charset=utf-8')
+      .send('QC-Dashboard.html هنوز ساخته نشده است؛ در پوشهٔ پروژه «npm run export» را اجرا کنید.');
+  }
+  res.download(file, 'QC-Dashboard.html');
+});
+
 app.use(express.static(PUBLIC_DIR, { maxAge: '1h' }));
 
 app.get('/api/health', (req, res) => {

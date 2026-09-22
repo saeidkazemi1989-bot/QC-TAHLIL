@@ -77,4 +77,9 @@ chkjson "health-uptodate" "" "$BASE/api/health" "d['watcher']['clean_up_to_date'
 t "admin-users" "$A" "$BASE/api/admin/users"
 echo -n "بازسازی بدون توکن (باید ۴۰۱): "; c=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/admin/rebuild"); echo "$c"; [ "$c" = "401" ] && pass=$((pass+1)) || fail=$((fail+1))
 echo -n "بازسازی با نقشِ کارشناس (باید ۴۰۳): "; c=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $E" "$BASE/api/admin/rebuild"); echo "$c"; [ "$c" = "403" ] && pass=$((pass+1)) || fail=$((fail+1))
+echo -n "دانلود نسخهٔ آفلاین /offline.html (باید ۲۰۰ و html باشد): "
+c=$(curl -s -o /dev/null -w "%{http_code} %{content_type}" "$BASE/offline.html"); echo "$c"
+case "$c" in 200*html*) pass=$((pass+1));; *) fail=$((fail+1));; esac
+echo -n "مسیرِ ناشناخته باید ۴۰۴ باشد: "; c=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/nope-xyz"); echo "$c"
+[ "$c" = "404" ] && pass=$((pass+1)) || fail=$((fail+1))
 echo "-----"; echo "موفق: $pass | ناموفق: $fail"
