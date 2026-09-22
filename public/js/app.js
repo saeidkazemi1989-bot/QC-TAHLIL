@@ -1,7 +1,7 @@
 /* چارچوب اصلی رابط کاربری: ورود، منو، فیلترها، مسیریابی */
 import { api, state, saveSession, logout, faInt, faDec, faDateTime, escapeHtml, el, toast } from './core.js';
 import { PAGES } from './pages.js';
-import { infoPopoverHtml, sectionNav } from './ui.js';
+import { infoPopoverHtml, sectionNav, wireTableSearch } from './ui.js';
 import { j2d, d2j, formatJalali, parseJalali, toFa, toEn } from './jalali.js';
 
 const PAGE_META = {
@@ -74,6 +74,7 @@ async function start() {
     state.meta = await api('/api/meta');
     if (!state.user.pages) state.user.pages = state.meta.pages;
     renderShell();
+    wireTableSearch();          // کادرِ جست‌وجوی جدول‌های شلوغ
     route();
     liveVersion = null;          // با ورودِ تازه، نسخهٔ داده از نو مبنا می‌شود
     startLivePolling();

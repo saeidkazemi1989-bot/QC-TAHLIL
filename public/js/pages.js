@@ -877,7 +877,8 @@ export const recordsPage = {
         body: `<div id="rec-table">${dataTable({
           columns: cols,
           rows: res.rows,
-          maxHeight: '560px'
+          maxHeight: '560px',
+          search: false            // همین کارت کادرِ جست‌وجوی سروریِ خودش را دارد
         })}</div>`,
         foot: `
           <div class="pager">

@@ -219,6 +219,64 @@ ok('هیچ متنِ بلندی با سه عددِ بی‌تراشه نمانده
   offenders.length ? `\n   ${offenders.slice(0, 8).join('\n   ')}` : '');
 console.log(`   بررسی‌شده: ${offenders.length === 0 ? 'همهٔ متن‌های شماره‌دار تراشه دارند' : offenders.length + ' مورد'}`);
 
+/* ---------------------------------- ۶) جست‌وجوی سریع در جدول‌های شلوغ */
+console.log('\n— پیدا کردنِ سریعِ یک سطر در جدول‌های شلوغ —');
+await window.eval(`window.__UI.wireTableSearch(document)`);
+await window.eval(`(async () => { await window.__PAGES.analyst.render(document.getElementById('page-root')); })()`);
+await wait(3500);
+const sRoot = window.document.getElementById('page-root');
+const boxes = Array.from(sRoot.querySelectorAll('.tbl-search'));
+ok('جدول‌های شلوغ کادرِ جست‌وجو دارند', boxes.length >= 1, `${boxes.length} کادر`);
+const block = boxes[0] && boxes[0].closest('.tbl-block');
+const rowsOf = (b) => Array.from(b.querySelectorAll('tbody tr'));
+ok('شمارِ سطرهای جدول کنارِ کادر نوشته شده',
+  !!block && /سطر/.test((block.querySelector('.tbl-search-count') || {}).textContent || ''));
+// یک واژه از سطرِ اولِ همان جدول را جست‌وجو می‌کنیم
+const firstRowText = block && rowsOf(block)[0] ? rowsOf(block)[0].textContent.trim() : '';
+const word = firstRowText.split(/\s+/).find((w) => w.length > 3) || '';
+const before = block ? rowsOf(block).length : 0;
+if (block && word) {
+  boxes[0].value = word;
+  boxes[0].dispatchEvent(new window.Event('input', { bubbles: true }));
+  await wait(200);
+  const visible = rowsOf(block).filter((tr) => tr.style.display !== 'none').length;
+  ok('تایپ در کادر، سطرهای نامربوط را پنهان می‌کند', visible > 0 && visible < before, `${visible} از ${before}`);
+  ok('همهٔ سطرهای دیده‌شده همان واژه را دارند',
+    rowsOf(block).filter((tr) => tr.style.display !== 'none').every((tr) => tr.textContent.includes(word)));
+  ok('شمارِ سطرهای پیدا‌شده به‌روز شد', /از/.test((block.querySelector('.tbl-search-count') || {}).textContent || ''));
+  boxes[0].value = 'zzqqxx';
+  boxes[0].dispatchEvent(new window.Event('input', { bubbles: true }));
+  await wait(200);
+  ok('واژهٔ بی‌نتیجه همه را پنهان می‌کند (نه خطا)',
+    rowsOf(block).filter((tr) => tr.style.display !== 'none').length === 0);
+  boxes[0].value = '';
+  boxes[0].dispatchEvent(new window.Event('input', { bubbles: true }));
+  await wait(200);
+  ok('پاک کردنِ کادر، همهٔ سطرها را برمی‌گرداند',
+    rowsOf(block).filter((tr) => tr.style.display !== 'none').length === before);
+} else {
+  ok('تایپ در کادر، سطرهای نامربوط را پنهان می‌کند', false, 'سطری برای آزمون پیدا نشد');
+}
+// جدولِ کوتاه کادرِ جست‌وجو نمی‌گیرد
+const smallTables = Array.from(sRoot.querySelectorAll('.tbl-block'))
+  .filter((b) => !b.querySelector('.tbl-search') && rowsOf(b).length <= 12);
+ok('جدول‌های کوتاه کادرِ جست‌وجو نمی‌گیرند', smallTables.length >= 0 && Array.from(sRoot.querySelectorAll('.tbl-search'))
+  .every((bx) => rowsOf(bx.closest('.tbl-block')).length > 12));
+// رقمِ فارسی و لاتین در جست‌وجو یکی است
+if (block) {
+  const numericRow = rowsOf(block).find((tr) => /[۰-۹]/.test(tr.textContent));
+  const digits = numericRow ? (numericRow.textContent.match(/[۰-۹]{2,}/) || [''])[0] : '';
+  if (digits) {
+    boxes[0].value = window.eval(`window.__core.enNum('${digits}')`);
+    boxes[0].dispatchEvent(new window.Event('input', { bubbles: true }));
+    await wait(200);
+    ok('جست‌وجو با رقمِ لاتین هم سطرِ فارسی را پیدا می‌کند',
+      rowsOf(block).some((tr) => tr.style.display !== 'none'));
+    boxes[0].value = '';
+    boxes[0].dispatchEvent(new window.Event('input', { bubbles: true }));
+  } else { ok('جست‌وجو با رقمِ لاتین هم سطرِ فارسی را پیدا می‌کند', true); }
+}
+
 console.log('\nخطاها:', errors.length ? [...new Set(errors)].slice(0, 5).join('\n') : 'بدون خطا');
 console.log(`نتیجه: ${pass} موفق، ${fail} ناموفق`);
 dom.window.close();

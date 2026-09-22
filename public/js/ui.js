@@ -1,5 +1,5 @@
 /* اجزای آماده‌ی رابط کاربری: کارت‌ها، کارت شاخص، جدول، وضعیت بارگذاری */
-import { faInt, faDec, faPct, compact, el, escapeHtml } from './core.js';
+import { faInt, faDec, faPct, compact, el, escapeHtml, enNum } from './core.js';
 import { GLOSSARY } from './glossary.js';
 
 export function infoBtn(key, placement = 'left') {
@@ -58,7 +58,44 @@ export function infoPopoverHtml(key) {
 }
 
 /** جدول ساده با هدر فارسی */
-export function dataTable({ columns, rows, caption = '', onRowClass = null, maxHeight = '420px' }) {
+/** یکدست‌سازی متنِ جست‌وجو: رقمِ فارسی، ی/ک عربی و نیم‌فاصله */
+function normSearch(v) {
+  return enNum(String(v === null || v === undefined ? '' : v))
+    .replace(/ي/g, 'ی').replace(/ك/g, 'ک')
+    .replace(/[\u200c\u200f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+let searchWired = false;
+/**
+ * اتصالِ یک‌بارِ کادرِ جست‌وجوی جدول‌ها (رویداد به‌صورت تفویضی).
+ * تایپ در کادر، سطرهای همان جدول را فیلتر می‌کند و تعدادِ سطرهای دیده‌شده را می‌نویسد.
+ */
+export function wireTableSearch(doc = typeof document !== 'undefined' ? document : null) {
+  if (searchWired || !doc) return;
+  searchWired = true;
+  doc.addEventListener('input', (e) => {
+    const box = e.target && e.target.closest ? e.target.closest('.tbl-search') : null;
+    if (!box) return;
+    const block = box.closest('.tbl-block');
+    if (!block) return;
+    const q = normSearch(box.value);
+    let shown = 0, total = 0;
+    block.querySelectorAll('tbody tr').forEach((tr) => {
+      total++;
+      const hit = !q || normSearch(tr.textContent).includes(q);
+      tr.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    const count = block.querySelector('.tbl-search-count');
+    if (count) count.textContent = q ? `${faInt(shown)} از ${faInt(total)} سطر` : `${faInt(total)} سطر`;
+    block.classList.toggle('has-filter', !!q);
+  });
+}
+
+export function dataTable({ columns, rows, caption = '', onRowClass = null, maxHeight = '420px', search = null }) {
   if (!rows || !rows.length) return emptyCard();
   const keys = Object.keys(columns);
   const head = keys.map((k) => `<th>${columns[k]}</th>`).join('');
@@ -66,11 +103,19 @@ export function dataTable({ columns, rows, caption = '', onRowClass = null, maxH
     const cls = onRowClass ? onRowClass(r, i) : '';
     return `<tr class="${cls}">${keys.map((k) => `<td>${formatCell(k, r[k], r)}</td>`).join('')}</tr>`;
   }).join('');
+  // جدول‌های شلوغ (بیش از ۱۲ سطر) کادرِ جست‌وجو می‌گیرند تا «پیدا کردن» سخت نباشد
+  const wantSearch = search === null ? rows.length > 12 : !!search;
+  const searchHtml = wantSearch ? `
+      <div class="tbl-search-row">
+        <input type="search" class="input tbl-search" placeholder="جست‌وجو در این جدول…" aria-label="جست‌وجو در این جدول" />
+        <span class="tbl-search-count">${faInt(rows.length)} سطر</span>
+      </div>` : '';
   return `
     ${caption ? `<div class="table-caption">${caption}</div>` : ''}
+    <div class="tbl-block">${searchHtml}
     <div class="table-wrap" style="max-height:${maxHeight}">
       <table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
-    </div>`;
+    </div></div>`;
 }
 
 function formatCell(key, value) {
