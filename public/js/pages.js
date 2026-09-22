@@ -180,7 +180,7 @@ export const home = {
       ${grid(2, `
         ${cardShell({
           title: 'محصولات پرعیب',
-          subtitle: '۱۰ محصول با بیشترین عیب در بازه انتخابی',
+          subtitle: highlightNums('۱۰ محصول با بیشترین عیب در بازه انتخابی'),
           body: '<div class="chart" id="home-product"></div>'
         })}
         ${cardShell({
@@ -193,7 +193,7 @@ export const home = {
       ${grid(2, `
         ${cardShell({
           title: 'دسته محصول (الکترونیک / پلیمر / EMS)',
-          subtitle: 'بر اساس پیشوند کد کالا: ۱ = الکترونیک، ۲ = پلیمر، ۳ = EMS',
+          subtitle: highlightNums('بر اساس پیشوند کد کالا: ۱ = الکترونیک، ۲ = پلیمر، ۳ = EMS'),
           info: 'category',
           body: '<div class="chart" id="home-category"></div>'
         })}
@@ -882,7 +882,7 @@ export const recordsPage = {
         foot: `
           <div class="pager">
             <button class="btn btn-ghost" id="rec-prev" ${recordsPage.page <= 1 ? 'disabled' : ''}>قبلی</button>
-            <span>صفحه ${faInt(recordsPage.page)} از ${faInt(pageCount)}</span>
+            <span>صفحه <b class="num">${faInt(recordsPage.page)}</b> از <b class="num">${faInt(pageCount)}</b></span>
             <button class="btn btn-ghost" id="rec-next" ${recordsPage.page >= pageCount ? 'disabled' : ''}>بعدی</button>
           </div>`
       })}
@@ -1949,7 +1949,7 @@ export const analyst = {
         })}
         ${cardShell({
           title: 'ریسک بالای PFMEA (RPN)',
-          subtitle: r.rpn && r.rpn.length ? 'حالت‌های خرابی با RPN بیشینهٔ ۱۵۰ به بالا' : 'این داده فقط در منبع «عیوب حین تولید» وجود دارد',
+          subtitle: r.rpn && r.rpn.length ? highlightNums('حالت‌های خرابی با RPN بیشینهٔ ۱۵۰ به بالا') : 'این داده فقط در منبع «عیوب حین تولید» وجود دارد',
           body: dataTable({
             columns: { failure_mode: 'حالت خرابی', type: 'نوع', station: 'ایستگاه', severity: 'شدت', occurrence: 'وقوع', detection: 'کشف', rpn_max: 'RPN', defects: 'عیوب' },
             rows: rpnRows, maxHeight: '320px'
